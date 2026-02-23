@@ -69,6 +69,16 @@ Optional footer quote fields:
 
 Default: frase del giorno da ZenQuotes con cache locale giornaliera.
 
+Optional weekday label overrides:
+
+- `weekdays_full` (7 entries for header date)
+- `weekdays_abbr` (7 entries for forecast labels)
+- `months_full` (12 entries for header date)
+- `months_abbr` (12 entries for header date)
+- `header_weekday_format` (`full` or `abbr`)
+- `header_month_format` (`full` or `abbr`)
+- `forecast_weekday_format` (`full` or `abbr`)
+
 ## 5. Test
 
 ```bash
