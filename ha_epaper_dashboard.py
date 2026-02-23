@@ -782,6 +782,23 @@ def _first_callable(obj, names):
     return None, None
 
 
+def _safe_partial_refresh(epd, disp_fn, buffer):
+    width = int(getattr(epd, "width", 800))
+    height = int(getattr(epd, "height", 480))
+    attempts = [
+        lambda: disp_fn(buffer),
+        lambda: disp_fn(buffer, 0, 0, width, height),
+        lambda: disp_fn(buffer, 0, 0, width - 1, height - 1),
+    ]
+    for attempt in attempts:
+        try:
+            attempt()
+            return True
+        except TypeError:
+            continue
+    return False
+
+
 def send_to_epaper(img: Image.Image, epd_lib_path: str = "", mode: str = "full"):
     epd_path, checked_paths = _resolve_epd_lib_path(epd_lib_path)
     if epd_path and epd_path not in sys.path:
@@ -807,7 +824,10 @@ def send_to_epaper(img: Image.Image, epd_lib_path: str = "", mode: str = "full")
         if init_fn and disp_fn:
             init_fn()
             log.info(f"Clock refresh using partial mode ({init_name} + {disp_name})")
-            disp_fn(buffer)
+            if not _safe_partial_refresh(epd, disp_fn, buffer):
+                log.warning("Partial signature mismatch, using full refresh for clock mode")
+                epd.init()
+                epd.display(buffer)
         else:
             log.warning("Partial refresh not supported by this driver, using full refresh for clock mode")
             epd.init()
