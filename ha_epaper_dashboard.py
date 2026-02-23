@@ -16,6 +16,7 @@ import os
 import sys
 import math
 import time
+import inspect
 import logging
 import argparse
 import requests
@@ -56,9 +57,10 @@ QUOTE_CACHE_FILE = _config.get("quote_cache_file", "/tmp/epaper_daily_quote.json
 HEADER_WEEKDAY_FORMAT = _config.get("header_weekday_format", "full")
 HEADER_MONTH_FORMAT = _config.get("header_month_format", "full")
 FORECAST_WEEKDAY_FORMAT = _config.get("forecast_weekday_format", "abbr")
-CLOCK_PARTIAL_REFRESH = _config.get("clock_partial_refresh", False)
+CLOCK_PARTIAL_REFRESH = _config.get("clock_partial_refresh", True)
+CLOCK_PARTIAL_FULLSCREEN = _config.get("clock_partial_fullscreen", True)
 CLOCK_DAEMON_INTERVAL_SEC = int(_config.get("clock_daemon_interval_sec", 60))
-CLOCK_DAEMON_FULL_EVERY = int(_config.get("clock_daemon_full_every", 5))
+CLOCK_DAEMON_FULL_EVERY = int(_config.get("clock_daemon_full_every", 240))
 
 EPD_MODULE = "epd7in5_V2"
 W, H = 480, 800
@@ -925,20 +927,23 @@ def _align_rect_for_epd(rect, width, height):
 def _safe_partial_refresh(epd, disp_fn, buffer, rect=None):
     width = int(getattr(epd, "width", 800))
     height = int(getattr(epd, "height", 480))
-    if rect is None:
-        rect = (0, 0, width, height)
-    x0, y0, x1, y1 = _align_rect_for_epd(rect, width, height)
-    attempts = [
-        lambda: disp_fn(buffer, x0, y0, x1, y1),
-        lambda: disp_fn(buffer, x0, y0, x1 - 1, y1 - 1),
-        lambda: disp_fn(buffer),
-    ]
-    for attempt in attempts:
-        try:
-            attempt()
+    x0, y0, x1, y1 = _align_rect_for_epd(rect or (0, 0, width, height), width, height)
+    try:
+        num_params = len(inspect.signature(disp_fn).parameters)
+    except Exception:
+        num_params = 0
+    try:
+        if num_params == 1:
+            disp_fn(buffer)
             return True
-        except TypeError:
-            continue
+        if num_params >= 5:
+            try:
+                disp_fn(buffer, x0, y0, x1, y1)
+            except TypeError:
+                disp_fn(buffer, x0, y0, x1 - 1, y1 - 1)
+            return True
+    except TypeError:
+        return False
     return False
 
 
@@ -955,7 +960,7 @@ def send_to_epaper(
     buffer = epd.getbuffer(img_hw)
 
     if mode == "clock" and clock_partial_refresh:
-        init_fn, init_name = _first_callable(epd, ["init_fast", "init_Fast", "init"])
+        init_fn, init_name = _first_callable(epd, ["init_part", "init_fast", "init_Fast", "init"])
         disp_fn, disp_name = _first_callable(epd, ["displayPartial", "display_partial", "display_Partial"])
         if init_fn and disp_fn:
             init_fn()
@@ -987,12 +992,13 @@ def run_clock_daemon(
     interval_sec: int,
     full_every: int,
     partial_refresh: bool,
+    partial_fullscreen: bool,
     demo: bool,
 ):
     epd_driver = _load_epd_driver(epd_lib_path)
     epd = epd_driver.EPD()
     clock_rect_hw = _portrait_rect_to_hw(CLOCK_RECT_PORTRAIT)
-    init_partial_fn, init_name = _first_callable(epd, ["init_fast", "init_Fast", "init"])
+    init_partial_fn, init_name = _first_callable(epd, ["init_part", "init_fast", "init_Fast", "init"])
     disp_partial_fn, disp_name = _first_callable(epd, ["displayPartial", "display_partial", "display_Partial"])
     partial_enabled = bool(partial_refresh and init_partial_fn and disp_partial_fn)
     if partial_enabled:
@@ -1007,32 +1013,33 @@ def run_clock_daemon(
         while True:
             now = datetime.now()
             do_full = tick_count == 0 or (tick_count % full_every == 0)
+            if demo:
+                data = demo_data()
+            else:
+                data = fetch_all_data()
+
+            img = render(data, now=now)
             if do_full:
-                if demo:
-                    data = demo_data()
-                else:
-                    data = fetch_all_data()
-                img = render(data, now=now)
                 try:
                     img.save(cache_image, "PNG")
                 except Exception as e:
                     log.warning(f"Failed to update cache image {cache_image}: {e}")
-                buffer = epd.getbuffer(img.rotate(90, expand=True))
+            buffer = epd.getbuffer(img.rotate(90, expand=True))
+
+            if do_full:
                 epd.init()
                 epd.display(buffer)
-            else:
-                update_clock_header(img, now=now)
-                buffer = epd.getbuffer(img.rotate(90, expand=True))
-                if partial_enabled:
-                    init_partial_fn()
-                    if not _safe_partial_refresh(epd, disp_partial_fn, buffer, rect=clock_rect_hw):
-                        log.warning("Clock daemon partial failed, switching to full refresh")
-                        partial_enabled = False
-                        epd.init()
-                        epd.display(buffer)
-                else:
+            elif partial_enabled:
+                init_partial_fn()
+                partial_rect = None if partial_fullscreen else clock_rect_hw
+                if not _safe_partial_refresh(epd, disp_partial_fn, buffer, rect=partial_rect):
+                    log.warning("Clock daemon partial failed, switching to full refresh")
+                    partial_enabled = False
                     epd.init()
                     epd.display(buffer)
+            else:
+                epd.init()
+                epd.display(buffer)
 
             tick_count += 1
             now_ts = time.time()
@@ -1095,6 +1102,7 @@ def main():
             interval_sec=args.clock_interval_sec,
             full_every=args.clock_full_every,
             partial_refresh=args.clock_partial_refresh or bool(CLOCK_PARTIAL_REFRESH),
+            partial_fullscreen=bool(CLOCK_PARTIAL_FULLSCREEN),
             demo=args.demo,
         )
         return
