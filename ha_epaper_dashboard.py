@@ -52,6 +52,9 @@ FOOTER_QUOTE = _config.get("footer_quote", "")
 FOOTER_SOURCE = _config.get("footer_source", "")
 QUOTE_API_URL = _config.get("quote_api_url", "https://zenquotes.io/api/today")
 QUOTE_CACHE_FILE = _config.get("quote_cache_file", "/tmp/epaper_daily_quote.json")
+HEADER_WEEKDAY_FORMAT = _config.get("header_weekday_format", "full")
+HEADER_MONTH_FORMAT = _config.get("header_month_format", "full")
+FORECAST_WEEKDAY_FORMAT = _config.get("forecast_weekday_format", "abbr")
 
 EPD_MODULE = "epd7in5_V2"
 W, H = 480, 800
@@ -494,15 +497,55 @@ def demo_data() -> dict:
 # ║  RENDERER                                                                ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
-GIORNI = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"]
-MESI = ["gen","feb","mar","apr","mag","giu","lug","ago","set","ott","nov","dic"]
-CONDIZIONI = {
+WEEKDAYS_ABBR = _config.get("weekdays_abbr", ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+MONTHS_ABBR = _config.get(
+    "months_abbr",
+    ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+)
+WEEKDAYS_FULL = _config.get(
+    "weekdays_full",
+    ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+)
+MONTHS_FULL = _config.get(
+    "months_full",
+    [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    ],
+)
+CONDITION_LABELS = {
     "sunny":"Sereno","clear-night":"Sereno","partlycloudy":"Parz. nuvoloso",
     "cloudy":"Nuvoloso","rainy":"Pioggia","pouring":"Pioggia forte",
     "snowy":"Neve","snowy-rainy":"Nevischio","fog":"Nebbia",
     "hail":"Grandine","lightning":"Temporale","lightning-rainy":"Temporale",
     "windy":"Ventoso","windy-variant":"Ventoso","exceptional":"Eccezionale",
 }
+
+if not isinstance(WEEKDAYS_ABBR, list) or len(WEEKDAYS_ABBR) != 7:
+    log.warning("Invalid weekdays_abbr in config.json, using defaults")
+    WEEKDAYS_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+if not isinstance(WEEKDAYS_FULL, list) or len(WEEKDAYS_FULL) != 7:
+    log.warning("Invalid weekdays_full in config.json, using defaults")
+    WEEKDAYS_FULL = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+if not isinstance(MONTHS_ABBR, list) or len(MONTHS_ABBR) != 12:
+    log.warning("Invalid months_abbr in config.json, using defaults")
+    MONTHS_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+if not isinstance(MONTHS_FULL, list) or len(MONTHS_FULL) != 12:
+    log.warning("Invalid months_full in config.json, using defaults")
+    MONTHS_FULL = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    ]
+
+if HEADER_WEEKDAY_FORMAT not in ("full", "abbr"):
+    log.warning("Invalid header_weekday_format in config.json, using 'full'")
+    HEADER_WEEKDAY_FORMAT = "full"
+if HEADER_MONTH_FORMAT not in ("full", "abbr"):
+    log.warning("Invalid header_month_format in config.json, using 'full'")
+    HEADER_MONTH_FORMAT = "full"
+if FORECAST_WEEKDAY_FORMAT not in ("full", "abbr"):
+    log.warning("Invalid forecast_weekday_format in config.json, using 'abbr'")
+    FORECAST_WEEKDAY_FORMAT = "abbr"
 
 FALLBACK_QUOTE = (
     "Sembra sempre impossibile finche non viene fatto.",
@@ -571,8 +614,11 @@ def draw_header(draw: ImageDraw.ImageDraw, fonts: dict, now: datetime):
     draw.rectangle([(0, 0), (W, HEADER_H)], fill=0)
     draw.text((16, 10), "CASA", fill=255, font=fonts["title"])
     draw.text((W-16, 10), now.strftime("%H:%M"), fill=255, font=fonts["time"], anchor="ra")
-    day_name = GIORNI[now.weekday()]
-    draw.text((16, 38), f"{day_name} {now.day} {MESI[now.month-1]} {now.year}",
+    weekday_labels = WEEKDAYS_FULL if HEADER_WEEKDAY_FORMAT == "full" else WEEKDAYS_ABBR
+    month_labels = MONTHS_FULL if HEADER_MONTH_FORMAT == "full" else MONTHS_ABBR
+    day_name = weekday_labels[now.weekday()]
+    month_name = month_labels[now.month - 1]
+    draw.text((16, 38), f"{day_name} {now.day} {month_name} {now.year}",
               fill=255, font=fonts["date"])
 
 
@@ -687,7 +733,7 @@ def render(data: dict, now: datetime = None) -> Image.Image:
     icon_ok = ICON_ASSETS.draw_weather(img, cond, icon_cx, icon_cy, 56) if ICON_ASSETS else False
     if not icon_ok:
         Icons.weather(draw, icon_cx, icon_cy, cond, r=26)
-    cond_text = CONDIZIONI.get(cond, cond.replace("_"," ").title())
+    cond_text = CONDITION_LABELS.get(cond, cond.replace("_", " ").title())
     draw.text((icon_cx, icon_cy+34), cond_text, fill=0, font=fonts["tiny"], anchor="mt")
 
     # Big temperature
@@ -718,7 +764,8 @@ def render(data: dict, now: datetime = None) -> Image.Image:
                 dt_str = fc["datetime"]
                 fc_date = datetime.fromisoformat(dt_str.replace("Z","+00:00")) if "T" in dt_str \
                           else datetime.strptime(dt_str[:10], "%Y-%m-%d")
-                dl = GIORNI[fc_date.weekday()]
+                forecast_weekdays = WEEKDAYS_FULL if FORECAST_WEEKDAY_FORMAT == "full" else WEEKDAYS_ABBR
+                dl = forecast_weekdays[fc_date.weekday()]
             except Exception:
                 dl = f"+{i+1}"
             draw.text((fx, y), dl, fill=0, font=fonts["fc_day"], anchor="mt")

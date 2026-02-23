@@ -7,6 +7,13 @@
     "footer_source": "",
     "quote_api_url": "https://zenquotes.io/api/today",
     "quote_cache_file": "/tmp/epaper_daily_quote.json",
+    "weekdays_full": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+    "weekdays_abbr": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    "months_full": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+    "months_abbr": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    "header_weekday_format": "full",
+    "header_month_format": "full",
+    "forecast_weekday_format": "abbr",
     "rooms": [
         {"name": "Cucina",     "icon": "kitchen",    "temp": "sensor.temp_umi_cucina_temperature",     "hum": "sensor.temp_umi_cucina_humidity"},
         {"name": "Soggiorno",  "icon": "livingroom", "temp": "sensor.temp_umi_soggiorno_temperature",  "hum": "sensor.temp_umi_soggiorno_humidity"},
