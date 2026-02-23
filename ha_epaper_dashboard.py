@@ -50,6 +50,7 @@ OUTDOOR_HUM    = _config.get("outdoor_hum", "")
 
 EPD_MODULE = "epd7in5_V2"
 W, H = 480, 800
+HEADER_H = 56
 
 FONT_DIR = "/usr/share/fonts/truetype/dejavu"
 DEFAULT_ICON_DIR = os.path.join(SCRIPT_DIR, "assets", "icons")
@@ -496,20 +497,45 @@ CONDIZIONI = {
     "windy":"Ventoso","windy-variant":"Ventoso","exceptional":"Eccezionale",
 }
 
-def render(data: dict) -> Image.Image:
-    img = Image.new("1", (W, H), 255)
-    draw = ImageDraw.Draw(img)
-    fonts = load_fonts()
-    now = datetime.now()
-
-    # ── HEADER (dark band) ──────────────────────────────────
-    draw.rectangle([(0, 0), (W, 56)], fill=0)
+def draw_header(draw: ImageDraw.ImageDraw, fonts: dict, now: datetime):
+    draw.rectangle([(0, 0), (W, HEADER_H)], fill=0)
     draw.text((16, 10), "CASA", fill=255, font=fonts["title"])
     draw.text((W-16, 10), now.strftime("%H:%M"), fill=255, font=fonts["time"], anchor="ra")
     day_name = GIORNI[now.weekday()]
     draw.text((16, 38), f"{day_name} {now.day} {MESI[now.month-1]} {now.year}",
               fill=255, font=fonts["date"])
-    y = 56
+
+
+def update_clock_header(img: Image.Image, now: datetime = None):
+    now = now or datetime.now()
+    draw = ImageDraw.Draw(img)
+    fonts = load_fonts()
+    draw_header(draw, fonts, now)
+
+
+def load_cached_full_image(cache_image: str) -> Image.Image:
+    cache_path = os.path.abspath(os.path.expanduser(cache_image))
+    try:
+        img = Image.open(cache_path).convert("1")
+        if img.size == (W, H):
+            return img
+        log.warning(f"Invalid cache image size {img.size}, expected {(W, H)}")
+    except Exception as e:
+        log.warning(f"Cache image unavailable ({cache_path}): {e}")
+    img = Image.new("1", (W, H), 255)
+    update_clock_header(img)
+    return img
+
+
+def render(data: dict, now: datetime = None) -> Image.Image:
+    img = Image.new("1", (W, H), 255)
+    draw = ImageDraw.Draw(img)
+    fonts = load_fonts()
+    now = now or datetime.now()
+
+    # ── HEADER (dark band) ──────────────────────────────────
+    draw_header(draw, fonts, now)
+    y = HEADER_H
 
     # ── OUTDOOR WEATHER ─────────────────────────────────────
     y += 10
@@ -660,7 +686,15 @@ def _resolve_epd_lib_path(custom_path: str = ""):
     return epd_path, normalized
 
 
-def send_to_epaper(img: Image.Image, epd_lib_path: str = ""):
+def _first_callable(obj, names):
+    for name in names:
+        fn = getattr(obj, name, None)
+        if callable(fn):
+            return fn, name
+    return None, None
+
+
+def send_to_epaper(img: Image.Image, epd_lib_path: str = "", mode: str = "full"):
     epd_path, checked_paths = _resolve_epd_lib_path(epd_lib_path)
     if epd_path and epd_path not in sys.path:
         sys.path.insert(0, epd_path)
@@ -676,10 +710,24 @@ def send_to_epaper(img: Image.Image, epd_lib_path: str = ""):
     log.info(f"Using Waveshare library path: {epd_path}")
     log.info("Initializing e-Paper...")
     epd = epd_driver.EPD()
-    epd.init()
     img_hw = img.rotate(90, expand=True)
-    log.info("Refreshing display...")
-    epd.display(epd.getbuffer(img_hw))
+    buffer = epd.getbuffer(img_hw)
+
+    if mode == "clock":
+        init_fn, init_name = _first_callable(epd, ["init_fast", "init_Fast", "init"])
+        disp_fn, disp_name = _first_callable(epd, ["displayPartial", "display_partial", "display_Partial"])
+        if init_fn and disp_fn:
+            init_fn()
+            log.info(f"Clock refresh using partial mode ({init_name} + {disp_name})")
+            disp_fn(buffer)
+        else:
+            log.warning("Partial refresh not supported by this driver, using full refresh for clock mode")
+            epd.init()
+            epd.display(buffer)
+    else:
+        epd.init()
+        log.info("Refreshing display...")
+        epd.display(buffer)
     log.info("Sleep mode")
     epd.sleep()
 
@@ -693,26 +741,38 @@ def main():
     parser.add_argument("--simulate", action="store_true", help="Save PNG instead of driving e-paper")
     parser.add_argument("--demo", action="store_true", help="Use demo data instead of fetching from HA")
     parser.add_argument("--output", default="/tmp/epaper_dashboard.png", help="PNG output path")
+    parser.add_argument("--mode", choices=["full", "clock"], default="full", help="full: all data, clock: header only")
     parser.add_argument("--epd-lib-path", default="", help="Path to Waveshare python lib dir")
     parser.add_argument("--icons-dir", default="", help="Path to icon assets directory")
+    parser.add_argument("--cache-image", default="/tmp/epaper_dashboard_full.png",
+                        help="Cached full image used by clock mode")
     args = parser.parse_args()
     ICON_ASSETS = IconAssets(args.icons_dir)
 
-    if args.demo:
-        log.info("Using demo data")
-        data = demo_data()
+    if args.mode == "clock":
+        log.info("Clock-only mode: reusing cached full image")
+        img = load_cached_full_image(args.cache_image)
+        update_clock_header(img)
     else:
-        log.info("Fetching from Home Assistant...")
-        data = fetch_all_data()
+        if args.demo:
+            log.info("Using demo data")
+            data = demo_data()
+        else:
+            log.info("Fetching from Home Assistant...")
+            data = fetch_all_data()
 
-    log.info("Rendering...")
-    img = render(data)
+        log.info("Rendering...")
+        img = render(data)
+        try:
+            img.save(args.cache_image, "PNG")
+        except Exception as e:
+            log.warning(f"Failed to update cache image {args.cache_image}: {e}")
 
     if args.simulate:
         img.save(args.output, "PNG")
         log.info(f"Preview: {args.output}")
     else:
-        send_to_epaper(img, args.epd_lib_path)
+        send_to_epaper(img, args.epd_lib_path, mode=args.mode)
         log.info("Done!")
 
 if __name__ == "__main__":

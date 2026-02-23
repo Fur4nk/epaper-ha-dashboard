@@ -73,6 +73,9 @@ python3 ha_epaper_dashboard.py
 
 # Run on display with explicit Waveshare path
 python3 ha_epaper_dashboard.py --epd-lib-path ~/src/e-Paper/RaspberryPi_JetsonNano/python/lib
+
+# Clock-only update (header only, reuses cached full image)
+python3 ha_epaper_dashboard.py --mode clock --epd-lib-path ~/src/e-Paper/RaspberryPi_JetsonNano/python/lib
 ```
 
 ## 5b. Optional icon assets
@@ -99,6 +102,11 @@ python3 ha_epaper_dashboard.py --simulate --icons-dir /path/to/icons --output pr
 
 ## 6. Systemd
 
+Recommended: two timers
+
+- every 1 minute: `--mode clock` (header/time refresh)
+- every 5 minutes: `--mode full` (HA data + forecast full refresh)
+
 Create `/etc/systemd/system/epaper-dashboard.service`:
 
 ```ini
@@ -112,7 +120,7 @@ Type=oneshot
 User=pi
 Group=pi
 WorkingDirectory=/home/pi
-ExecStart=/usr/bin/python3 /home/pi/ha_epaper_dashboard.py
+ExecStart=/usr/bin/python3 /home/pi/ha_epaper_dashboard.py --mode full --epd-lib-path /home/pi/src/e-Paper/RaspberryPi_JetsonNano/python/lib
 ExecStartPre=/bin/sleep 5
 Restart=on-failure
 RestartSec=30
@@ -142,11 +150,48 @@ Persistent=true
 WantedBy=timers.target
 ```
 
+Create `/etc/systemd/system/epaper-dashboard-clock.service`:
+
+```ini
+[Unit]
+Description=Home Assistant e-Paper Dashboard clock refresh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+Group=pi
+WorkingDirectory=/home/pi
+ExecStart=/usr/bin/python3 /home/pi/ha_epaper_dashboard.py --mode clock --epd-lib-path /home/pi/src/e-Paper/RaspberryPi_JetsonNano/python/lib
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=epaper-dashboard-clock
+SupplementaryGroups=spi gpio
+```
+
+Create `/etc/systemd/system/epaper-dashboard-clock.timer`:
+
+```ini
+[Unit]
+Description=Refresh e-Paper clock every minute
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=1min
+AccuracySec=10s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
 Then enable:
 
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now epaper-dashboard.timer
+sudo systemctl enable --now epaper-dashboard-clock.timer
 ```
 
 ## 7. Useful commands
