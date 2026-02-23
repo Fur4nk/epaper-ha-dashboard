@@ -402,16 +402,32 @@ def ha_get_weather() -> dict:
               "wind_speed": None, "forecast": []}
     if WEATHER_ENTITY:
         try:
-            r = requests.post(f"{HA_URL}/api/services/weather/get_forecasts",
+            r = requests.post(f"{HA_URL}/api/services/weather/get_forecasts?return_response",
                               headers=_ha_headers(),
                               json={"entity_id": WEATHER_ENTITY, "type": "daily"}, timeout=10)
             if r.ok:
                 svc = r.json()
                 if isinstance(svc, dict):
-                    for val in svc.values():
-                        if isinstance(val, dict) and "forecast" in val:
-                            result["forecast"] = val["forecast"][:4]
-                            break
+                    # New HA response shape:
+                    # {"service_response": {"weather.entity_id": {"forecast": [...]}}}
+                    service_response = svc.get("service_response")
+                    if isinstance(service_response, dict):
+                        weather_data = service_response.get(WEATHER_ENTITY)
+                        if isinstance(weather_data, dict) and "forecast" in weather_data:
+                            result["forecast"] = weather_data["forecast"][:4]
+                    # Backward-compatible fallback for alternate response shapes.
+                    if not result["forecast"]:
+                        for val in svc.values():
+                            if isinstance(val, dict) and "forecast" in val:
+                                result["forecast"] = val["forecast"][:4]
+                                break
+                            if isinstance(val, dict):
+                                for inner in val.values():
+                                    if isinstance(inner, dict) and "forecast" in inner:
+                                        result["forecast"] = inner["forecast"][:4]
+                                        break
+                                if result["forecast"]:
+                                    break
         except Exception:
             pass
         try:
