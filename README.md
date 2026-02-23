@@ -18,8 +18,13 @@ epaper-dashboard/
 
 ```bash
 sudo apt install python3-pil python3-numpy python3-rpi.gpio python3-spidev
-git clone https://github.com/waveshare/e-Paper ~/e-Paper
+git clone https://github.com/waveshare/e-Paper ~/src/e-Paper
 ```
+
+You can point the script to Waveshare library path with:
+
+- CLI: `--epd-lib-path /path/to/e-Paper/RaspberryPi_JetsonNano/python/lib`
+- env: `EPD_LIB_PATH=/path/to/e-Paper/RaspberryPi_JetsonNano/python/lib`
 
 ## 2. Setup
 
@@ -51,6 +56,9 @@ HA → User profile → Long-lived access tokens → Create token
 
 Available room icons: `kitchen`, `livingroom`, `bedroom`, `childroom`, `bathroom`, `laundry`, `storage`
 
+Supported weather condition names (for icon assets):  
+`sunny`, `clear-night`, `partlycloudy`, `cloudy`, `rainy`, `pouring`, `snowy`, `snowy-rainy`, `fog`, `hail`, `lightning`, `lightning-rainy`, `windy`, `windy-variant`, `exceptional`
+
 ## 5. Test
 
 ```bash
@@ -62,6 +70,31 @@ python3 ha_epaper_dashboard.py --simulate --output preview.png
 
 # Run on actual display
 python3 ha_epaper_dashboard.py
+
+# Run on display with explicit Waveshare path
+python3 ha_epaper_dashboard.py --epd-lib-path ~/src/e-Paper/RaspberryPi_JetsonNano/python/lib
+```
+
+## 5b. Optional icon assets
+
+You can use PNG icon files instead of built-in drawn icons.  
+See `assets/icons/README.md` for full naming and directory layout.
+
+Supported paths:
+
+- `assets/icons/weather/<condition>.png`
+- `assets/icons/rooms/<room_icon>.png`
+- `assets/icons/weather_<condition>.png`
+- `assets/icons/rooms_<room_icon>.png`
+
+Name matching also supports `-`/`_` variants automatically.
+
+```bash
+# Use default assets/icons
+python3 ha_epaper_dashboard.py --simulate --output preview.png
+
+# Or provide a custom icons directory
+python3 ha_epaper_dashboard.py --simulate --icons-dir /path/to/icons --output preview.png
 ```
 
 ## 6. Systemd

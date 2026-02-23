@@ -1,14 +1,14 @@
 {
     "weather_entity": "weather.casa",
-    "outdoor_temp": "sensor.outdoor_temperature",
-    "outdoor_hum": "sensor.outdoor_humidity",
+    "outdoor_temp": "sensor.daikin_soggiorno_outside_temperature",
+    "outdoor_hum": "",
     "rooms": [
-        {"name": "Cucina",     "icon": "kitchen",    "temp": "sensor.cucina_temperature",     "hum": "sensor.cucina_humidity"},
-        {"name": "Soggiorno",  "icon": "livingroom", "temp": "sensor.soggiorno_temperature",  "hum": "sensor.soggiorno_humidity"},
-        {"name": "Camera",     "icon": "bedroom",    "temp": "sensor.camera_temperature",     "hum": "sensor.camera_humidity"},
-        {"name": "Cameretta",  "icon": "childroom",  "temp": "sensor.cameretta_temperature",  "hum": "sensor.cameretta_humidity"},
-        {"name": "Bagno",      "icon": "bathroom",   "temp": "sensor.bagno_temperature",      "hum": "sensor.bagno_humidity"},
-        {"name": "Lavanderia", "icon": "laundry",    "temp": "sensor.lavanderia_temperature", "hum": "sensor.lavanderia_humidity"},
-        {"name": "Sgabuzzino", "icon": "storage",    "temp": "sensor.sgabuzzino_temperature", "hum": "sensor.sgabuzzino_humidity"}
+        {"name": "Cucina",     "icon": "kitchen",    "temp": "sensor.temp_umi_cucina_temperature",     "hum": "sensor.temp_umi_cucina_humidity"},
+        {"name": "Soggiorno",  "icon": "livingroom", "temp": "sensor.temp_umi_soggiorno_temperature",  "hum": "sensor.temp_umi_soggiorno_humidity"},
+        {"name": "Camera",     "icon": "bedroom",    "temp": "sensor.temp_umi_camera_temperature",     "hum": "sensor.temp_umi_camera_humidity"},
+        {"name": "Cameretta",  "icon": "childroom",  "temp": "sensor.temp_umi_cameretta_temperature",  "hum": "sensor.temp_umi_cameretta_humidity"},
+        {"name": "Bagno",      "icon": "bathroom",   "temp": "sensor.temp_umi_bagno_temperature",      "hum": "sensor.temp_umi_bagno_humidity"},
+        {"name": "Lavanderia", "icon": "laundry",    "temp": "sensor.temp_umi_lavanderia_temperature", "hum": "sensor.temp_umi_lavanderia_humidity"},
+        {"name": "Sgabuzzino", "icon": "storage",    "temp": "sensor.temp_umi_ripostiglio_temperature","hum": "sensor.temp_umi_ripostiglio_humidity"}
     ]
 }

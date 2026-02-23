@@ -52,6 +52,8 @@ EPD_MODULE = "epd7in5_V2"
 W, H = 480, 800
 
 FONT_DIR = "/usr/share/fonts/truetype/dejavu"
+DEFAULT_ICON_DIR = os.path.join(SCRIPT_DIR, "assets", "icons")
+ICON_ASSETS = None
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  LOGGING                                                                 ║
@@ -289,6 +291,93 @@ class Icons:
             draw.rectangle([cx-s, cy-s+4, cx+s, cy+s-2], outline=0, width=2)
             draw.polygon([(cx-s-2, cy-s+4), (cx, cy-s-4), (cx+s+2, cy-s+4)], outline=0, width=2)
 
+
+class IconAssets:
+    def __init__(self, icons_dir: str = ""):
+        env_dir = os.environ.get("EPD_ICONS_DIR", "")
+        self.icons_dir = os.path.abspath(icons_dir or env_dir or DEFAULT_ICON_DIR)
+        self.enabled = os.path.isdir(self.icons_dir)
+        self._cache = {}
+        if self.enabled:
+            log.info(f"Using icon assets from: {self.icons_dir}")
+        else:
+            log.info("Icon assets directory not found; using built-in vector icons")
+
+    @staticmethod
+    def _variants(name: str):
+        base = (name or "").strip().lower()
+        variants = [
+            base,
+            base.replace("-", "_"),
+            base.replace("_", "-"),
+            base.replace("-", "").replace("_", ""),
+        ]
+        seen = set()
+        out = []
+        for v in variants:
+            if v and v not in seen:
+                out.append(v)
+                seen.add(v)
+        return out
+
+    def _candidate_paths(self, category: str, name: str):
+        for variant in self._variants(name):
+            yield os.path.join(self.icons_dir, category, f"{variant}.png")
+            yield os.path.join(self.icons_dir, f"{category}_{variant}.png")
+            yield os.path.join(self.icons_dir, f"{variant}.png")
+
+    def _load(self, category: str, name: str):
+        cache_key = (category, name)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+        for path in self._candidate_paths(category, name):
+            if not os.path.exists(path):
+                continue
+            try:
+                rgba = Image.open(path).convert("RGBA")
+                flat = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+                flat.alpha_composite(rgba)
+                bw = flat.convert("L").point(lambda p: 0 if p < 140 else 255, mode="1")
+                self._cache[cache_key] = bw
+                return bw
+            except Exception as e:
+                log.warning(f"Failed to load icon asset {path}: {e}")
+                break
+        self._cache[cache_key] = None
+        return None
+
+    @staticmethod
+    def _resample_filter():
+        resampling = getattr(Image, "Resampling", None)
+        return resampling.LANCZOS if resampling else Image.LANCZOS
+
+    def draw(self, canvas: Image.Image, category: str, name: str, cx: int, cy: int, size: int) -> bool:
+        if not self.enabled:
+            return False
+        icon = self._load(category, name)
+        if icon is None:
+            return False
+        resized = icon.resize((size, size), self._resample_filter())
+        x = int(cx - size / 2)
+        y = int(cy - size / 2)
+        canvas.paste(resized, (x, y))
+        return True
+
+    def draw_weather(self, canvas: Image.Image, condition: str, cx: int, cy: int, size: int) -> bool:
+        condition_l = (condition or "unknown").lower()
+        names = [condition_l]
+        if "partlycloudy" in condition_l:
+            names.extend(["partly_cloudy", "partly-cloudy"])
+        if "clear-night" in condition_l:
+            names.append("night")
+        for name in names:
+            if self.draw(canvas, "weather", name, cx, cy, size):
+                return True
+        return False
+
+    def draw_room(self, canvas: Image.Image, icon_type: str, cx: int, cy: int, size: int) -> bool:
+        return self.draw(canvas, "rooms", icon_type, cx, cy, size)
+
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  HOME ASSISTANT API                                                      ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
@@ -297,6 +386,8 @@ def _ha_headers():
     return {"Authorization": f"Bearer {HA_TOKEN}", "Content-Type": "application/json"}
 
 def ha_get_state(entity_id: str):
+    if not entity_id:
+        return None
     try:
         r = requests.get(f"{HA_URL}/api/states/{entity_id}", headers=_ha_headers(), timeout=10)
         r.raise_for_status()
@@ -309,32 +400,35 @@ def ha_get_state(entity_id: str):
 def ha_get_weather() -> dict:
     result = {"condition": "unknown", "temperature": None, "humidity": None,
               "wind_speed": None, "forecast": []}
-    try:
-        r = requests.post(f"{HA_URL}/api/services/weather/get_forecasts",
-                          headers=_ha_headers(),
-                          json={"entity_id": WEATHER_ENTITY, "type": "daily"}, timeout=10)
-        if r.ok:
-            svc = r.json()
-            if isinstance(svc, dict):
-                for val in svc.values():
-                    if isinstance(val, dict) and "forecast" in val:
-                        result["forecast"] = val["forecast"][:4]
-                        break
-    except Exception:
-        pass
-    try:
-        r = requests.get(f"{HA_URL}/api/states/{WEATHER_ENTITY}", headers=_ha_headers(), timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        result["condition"] = data.get("state", "unknown")
-        attrs = data.get("attributes", {})
-        result["temperature"] = attrs.get("temperature")
-        result["humidity"] = attrs.get("humidity")
-        result["wind_speed"] = attrs.get("wind_speed")
-        if not result["forecast"]:
-            result["forecast"] = attrs.get("forecast", [])[:4]
-    except Exception as e:
-        log.warning(f"Failed to fetch weather: {e}")
+    if WEATHER_ENTITY:
+        try:
+            r = requests.post(f"{HA_URL}/api/services/weather/get_forecasts",
+                              headers=_ha_headers(),
+                              json={"entity_id": WEATHER_ENTITY, "type": "daily"}, timeout=10)
+            if r.ok:
+                svc = r.json()
+                if isinstance(svc, dict):
+                    for val in svc.values():
+                        if isinstance(val, dict) and "forecast" in val:
+                            result["forecast"] = val["forecast"][:4]
+                            break
+        except Exception:
+            pass
+        try:
+            r = requests.get(f"{HA_URL}/api/states/{WEATHER_ENTITY}", headers=_ha_headers(), timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            result["condition"] = data.get("state", "unknown")
+            attrs = data.get("attributes", {})
+            result["temperature"] = attrs.get("temperature")
+            result["humidity"] = attrs.get("humidity")
+            result["wind_speed"] = attrs.get("wind_speed")
+            if not result["forecast"]:
+                result["forecast"] = attrs.get("forecast", [])[:4]
+        except Exception as e:
+            log.warning(f"Failed to fetch weather: {e}")
+    else:
+        log.warning("weather_entity is empty in config.json")
 
     out_t = ha_get_state(OUTDOOR_TEMP)
     out_h = ha_get_state(OUTDOOR_HUM)
@@ -414,7 +508,9 @@ def render(data: dict) -> Image.Image:
 
     # Large weather icon
     icon_cx, icon_cy = 56, y + 28
-    Icons.weather(draw, icon_cx, icon_cy, cond, r=26)
+    icon_ok = ICON_ASSETS.draw_weather(img, cond, icon_cx, icon_cy, 56) if ICON_ASSETS else False
+    if not icon_ok:
+        Icons.weather(draw, icon_cx, icon_cy, cond, r=26)
     cond_text = CONDIZIONI.get(cond, cond.replace("_"," ").title())
     draw.text((icon_cx, icon_cy+34), cond_text, fill=0, font=fonts["tiny"], anchor="mt")
 
@@ -450,7 +546,10 @@ def render(data: dict) -> Image.Image:
             except Exception:
                 dl = f"+{i+1}"
             draw.text((fx, y), dl, fill=0, font=fonts["fc_day"], anchor="mt")
-            Icons.weather(draw, fx, y+26, fc.get("condition","unknown"), r=14)
+            fc_cond = fc.get("condition", "unknown")
+            fc_icon_ok = ICON_ASSETS.draw_weather(img, fc_cond, fx, y + 26, 28) if ICON_ASSETS else False
+            if not fc_icon_ok:
+                Icons.weather(draw, fx, y + 26, fc_cond, r=14)
             t_hi = fc.get("temperature","—")
             t_lo = fc.get("templow","—")
             draw.text((fx, y+44), f"{t_hi}°/{t_lo}°", fill=0, font=fonts["fc_temp"], anchor="mt")
@@ -483,7 +582,9 @@ def render(data: dict) -> Image.Image:
         if i % 2 == 0:
             draw.rectangle([(0, ry), (W, ry+row_h-1)], fill=248)
 
-        Icons.room(draw, 30, ry_mid, room["icon"], s=11)
+        room_icon_ok = ICON_ASSETS.draw_room(img, room["icon"], 30, ry_mid, 24) if ICON_ASSETS else False
+        if not room_icon_ok:
+            Icons.room(draw, 30, ry_mid, room["icon"], s=11)
         draw.text((54, ry_mid), room["name"], fill=0, font=fonts["room_name"], anchor="lm")
 
         if room["temp"] is not None:
@@ -520,12 +621,43 @@ def render(data: dict) -> Image.Image:
 # ║  E-PAPER OUTPUT                                                          ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
-def send_to_epaper(img: Image.Image):
-    epd_path = os.path.expanduser("~/e-Paper/RaspberryPi_JetsonNano/python/lib")
-    if epd_path not in sys.path:
-        sys.path.insert(0, epd_path)
-    from waveshare_epd import epd7in5_V2 as epd_driver
+def _resolve_epd_lib_path(custom_path: str = ""):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    env_path = os.environ.get("EPD_LIB_PATH", "")
+    candidate_paths = [
+        custom_path,
+        env_path,
+        os.path.expanduser("~/e-Paper/RaspberryPi_JetsonNano/python/lib"),
+        os.path.expanduser("~/src/e-Paper/RaspberryPi_JetsonNano/python/lib"),
+        os.path.abspath(os.path.join(script_dir, "..", "e-Paper", "RaspberryPi_JetsonNano", "python", "lib")),
+    ]
+    normalized = []
+    seen = set()
+    for p in candidate_paths:
+        if not p:
+            continue
+        ap = os.path.abspath(os.path.expanduser(p))
+        if ap not in seen:
+            normalized.append(ap)
+            seen.add(ap)
+    epd_path = next((p for p in normalized if os.path.isdir(p)), None)
+    return epd_path, normalized
 
+
+def send_to_epaper(img: Image.Image, epd_lib_path: str = ""):
+    epd_path, checked_paths = _resolve_epd_lib_path(epd_lib_path)
+    if epd_path and epd_path not in sys.path:
+        sys.path.insert(0, epd_path)
+    try:
+        from waveshare_epd import epd7in5_V2 as epd_driver
+    except ModuleNotFoundError as e:
+        raise ModuleNotFoundError(
+            "waveshare_epd not found. Checked paths: "
+            + ", ".join(checked_paths)
+            + ". Set EPD_LIB_PATH or use --epd-lib-path."
+        ) from e
+
+    log.info(f"Using Waveshare library path: {epd_path}")
     log.info("Initializing e-Paper...")
     epd = epd_driver.EPD()
     epd.init()
@@ -540,11 +672,15 @@ def send_to_epaper(img: Image.Image):
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
 def main():
+    global ICON_ASSETS
     parser = argparse.ArgumentParser(description="HA e-Paper Dashboard")
     parser.add_argument("--simulate", action="store_true", help="Save PNG instead of driving e-paper")
     parser.add_argument("--demo", action="store_true", help="Use demo data instead of fetching from HA")
     parser.add_argument("--output", default="/tmp/epaper_dashboard.png", help="PNG output path")
+    parser.add_argument("--epd-lib-path", default="", help="Path to Waveshare python lib dir")
+    parser.add_argument("--icons-dir", default="", help="Path to icon assets directory")
     args = parser.parse_args()
+    ICON_ASSETS = IconAssets(args.icons_dir)
 
     if args.demo:
         log.info("Using demo data")
@@ -560,7 +696,7 @@ def main():
         img.save(args.output, "PNG")
         log.info(f"Preview: {args.output}")
     else:
-        send_to_epaper(img)
+        send_to_epaper(img, args.epd_lib_path)
         log.info("Done!")
 
 if __name__ == "__main__":
