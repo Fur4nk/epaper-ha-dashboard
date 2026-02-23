@@ -1,3 +1,6 @@
 secrets.json
 __pycache__/
 *.pyc
+assets/icons/rooms/
+assets/icons/weather/
+assets/icons/source/
