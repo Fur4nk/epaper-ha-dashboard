@@ -78,6 +78,9 @@ Optional weekday label overrides:
 - `header_weekday_format` (`full` or `abbr`)
 - `header_month_format` (`full` or `abbr`)
 - `forecast_weekday_format` (`full` or `abbr`)
+- `clock_partial_refresh` (`true` enables partial updates in `clock-daemon`)
+- `clock_daemon_interval_sec` (default `60`)
+- `clock_daemon_full_every` (force full refresh every N ticks, default `5`)
 
 ## 5. Test
 
@@ -96,6 +99,12 @@ python3 ha_epaper_dashboard.py --epd-lib-path ~/src/e-Paper/RaspberryPi_JetsonNa
 
 # Clock-only update (header only, reuses cached full image)
 python3 ha_epaper_dashboard.py --mode clock --epd-lib-path ~/src/e-Paper/RaspberryPi_JetsonNano/python/lib
+
+# Continuous clock daemon (recommended for real partial updates)
+python3 ha_epaper_dashboard.py --mode clock-daemon --epd-lib-path ~/src/e-Paper/RaspberryPi_JetsonNano/python/lib
+
+# Optional: override daemon timing
+python3 ha_epaper_dashboard.py --mode clock-daemon --clock-interval-sec 60 --clock-full-every 5 --epd-lib-path ~/src/e-Paper/RaspberryPi_JetsonNano/python/lib
 ```
 
 ## 5b. Optional icon assets
@@ -122,104 +131,28 @@ python3 ha_epaper_dashboard.py --simulate --icons-dir /path/to/icons --output pr
 
 ## 6. Systemd
 
-Recommended: two timers
+Recommended:
 
-- every 1 minute: `--mode clock` (header/time refresh)
-- every 5 minutes: `--mode full` (HA data + forecast full refresh)
+- one long-running daemon service
+- every minute updates clock
+- every N ticks (default 5) fetches HA + full refresh
 
-Create `/etc/systemd/system/epaper-dashboard.service`:
-
-```ini
-[Unit]
-Description=Home Assistant e-Paper Dashboard refresh
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-User=pi
-Group=pi
-WorkingDirectory=/home/pi
-ExecStart=/usr/bin/python3 /home/pi/ha_epaper_dashboard.py --mode full --epd-lib-path /home/pi/src/e-Paper/RaspberryPi_JetsonNano/python/lib
-ExecStartPre=/bin/sleep 5
-Restart=on-failure
-RestartSec=30
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=epaper-dashboard
-NoNewPrivileges=false
-ProtectSystem=strict
-ReadWritePaths=/tmp
-SupplementaryGroups=spi gpio
-```
-
-Create `/etc/systemd/system/epaper-dashboard.timer`:
-
-```ini
-[Unit]
-Description=Refresh e-Paper dashboard every 5 minutes
-
-[Timer]
-OnBootSec=60
-OnUnitActiveSec=5min
-RandomizedDelaySec=10
-AccuracySec=30
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-```
-
-Create `/etc/systemd/system/epaper-dashboard-clock.service`:
-
-```ini
-[Unit]
-Description=Home Assistant e-Paper Dashboard clock refresh
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-User=pi
-Group=pi
-WorkingDirectory=/home/pi
-ExecStart=/usr/bin/python3 /home/pi/ha_epaper_dashboard.py --mode clock --epd-lib-path /home/pi/src/e-Paper/RaspberryPi_JetsonNano/python/lib
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=epaper-dashboard-clock
-SupplementaryGroups=spi gpio
-```
-
-Create `/etc/systemd/system/epaper-dashboard-clock.timer`:
-
-```ini
-[Unit]
-Description=Refresh e-Paper clock every minute
-
-[Timer]
-OnBootSec=30
-OnUnitActiveSec=1min
-AccuracySec=10s
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-```
+Prebuilt unit files are provided in `systemd/` for user `dash` and path `/home/dash/src`.
 
 Then enable:
 
 ```bash
+sudo install -m 644 systemd/epaper-dashboard.service /etc/systemd/system/epaper-dashboard.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now epaper-dashboard.timer
-sudo systemctl enable --now epaper-dashboard-clock.timer
+sudo systemctl enable --now epaper-dashboard.service
 ```
 
 ## 7. Useful commands
 
 ```bash
-systemctl status epaper-dashboard.timer          # timer status
-journalctl -u epaper-dashboard.service -f        # live logs
-sudo systemctl start epaper-dashboard.service    # manual refresh
+systemctl status epaper-dashboard.service   # daemon status
+journalctl -u epaper-dashboard.service -f   # live logs
+sudo systemctl restart epaper-dashboard.service
 ```
 
 ## Status dot legend
