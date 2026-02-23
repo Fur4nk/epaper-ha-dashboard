@@ -59,6 +59,16 @@ Available room icons: `kitchen`, `livingroom`, `bedroom`, `childroom`, `bathroom
 Supported weather condition names (for icon assets):  
 `sunny`, `clear-night`, `partlycloudy`, `cloudy`, `rainy`, `pouring`, `snowy`, `snowy-rainy`, `fog`, `hail`, `lightning`, `lightning-rainy`, `windy`, `windy-variant`, `exceptional`
 
+Optional footer quote fields:
+
+- `footer_daily_quote` (`true` = nuova frase ogni giorno da ZenQuotes)
+- `footer_quote`
+- `footer_source`
+- `quote_api_url` (default: `https://zenquotes.io/api/today`)
+- `quote_cache_file` (default: `/tmp/epaper_daily_quote.json`)
+
+Default: frase del giorno da ZenQuotes con cache locale giornaliera.
+
 ## 5. Test
 
 ```bash
