@@ -2,6 +2,11 @@
     "weather_entity": "weather.casa",
     "outdoor_temp": "sensor.daikin_soggiorno_outside_temperature",
     "outdoor_hum": "",
+    "footer_daily_quote": true,
+    "footer_quote": "",
+    "footer_source": "",
+    "quote_api_url": "https://zenquotes.io/api/today",
+    "quote_cache_file": "/tmp/epaper_daily_quote.json",
     "rooms": [
         {"name": "Cucina",     "icon": "kitchen",    "temp": "sensor.temp_umi_cucina_temperature",     "hum": "sensor.temp_umi_cucina_humidity"},
         {"name": "Soggiorno",  "icon": "livingroom", "temp": "sensor.temp_umi_soggiorno_temperature",  "hum": "sensor.temp_umi_soggiorno_humidity"},

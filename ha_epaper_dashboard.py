@@ -47,6 +47,11 @@ ROOMS          = _config["rooms"]
 WEATHER_ENTITY = _config["weather_entity"]
 OUTDOOR_TEMP   = _config.get("outdoor_temp", "")
 OUTDOOR_HUM    = _config.get("outdoor_hum", "")
+FOOTER_DAILY_QUOTE = _config.get("footer_daily_quote", True)
+FOOTER_QUOTE = _config.get("footer_quote", "")
+FOOTER_SOURCE = _config.get("footer_source", "")
+QUOTE_API_URL = _config.get("quote_api_url", "https://zenquotes.io/api/today")
+QUOTE_CACHE_FILE = _config.get("quote_cache_file", "/tmp/epaper_daily_quote.json")
 
 EPD_MODULE = "epd7in5_V2"
 W, H = 480, 800
@@ -497,6 +502,69 @@ CONDIZIONI = {
     "windy":"Ventoso","windy-variant":"Ventoso","exceptional":"Eccezionale",
 }
 
+FALLBACK_QUOTE = (
+    "Sembra sempre impossibile finche non viene fatto.",
+    "Nelson Mandela",
+)
+
+
+def _read_quote_cache():
+    try:
+        with open(QUOTE_CACHE_FILE) as f:
+            data = json.load(f)
+        quote = (data.get("quote") or "").strip()
+        author = (data.get("author") or "").strip()
+        cached_date = (data.get("date") or "").strip()
+        if quote and author and cached_date:
+            return quote, author, cached_date
+    except Exception:
+        return None
+    return None
+
+
+def _write_quote_cache(now: datetime, quote: str, author: str):
+    try:
+        with open(QUOTE_CACHE_FILE, "w") as f:
+            json.dump(
+                {"date": now.strftime("%Y-%m-%d"), "quote": quote, "author": author},
+                f,
+            )
+    except Exception as e:
+        log.warning(f"Failed to write quote cache {QUOTE_CACHE_FILE}: {e}")
+
+
+def daily_quote(now: datetime):
+    today = now.strftime("%Y-%m-%d")
+    cached = _read_quote_cache()
+    if cached and cached[2] == today:
+        return cached[0], cached[1]
+
+    try:
+        r = requests.get(QUOTE_API_URL, timeout=8)
+        r.raise_for_status()
+        data = r.json()
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            quote = (data[0].get("q") or "").strip()
+            author = (data[0].get("a") or "").strip()
+            if quote and author:
+                _write_quote_cache(now, quote, author)
+                return quote, author
+    except Exception as e:
+        log.warning(f"Failed to fetch daily quote from {QUOTE_API_URL}: {e}")
+
+    if cached:
+        return cached[0], cached[1]
+    if FOOTER_QUOTE and FOOTER_SOURCE:
+        return FOOTER_QUOTE, FOOTER_SOURCE
+    return FALLBACK_QUOTE
+
+
+def footer_text(now: datetime):
+    if FOOTER_DAILY_QUOTE:
+        return daily_quote(now)
+    return FOOTER_QUOTE, FOOTER_SOURCE
+
+
 def draw_header(draw: ImageDraw.ImageDraw, fonts: dict, now: datetime):
     draw.rectangle([(0, 0), (W, HEADER_H)], fill=0)
     draw.text((16, 10), "CASA", fill=255, font=fonts["title"])
@@ -511,6 +579,25 @@ def update_clock_header(img: Image.Image, now: datetime = None):
     draw = ImageDraw.Draw(img)
     fonts = load_fonts()
     draw_header(draw, fonts, now)
+
+
+def _fit_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_w: int) -> str:
+    out = (text or "").strip()
+    while out and draw.textlength(out, font=font) > max_w:
+        out = out[:-1].rstrip()
+    if out != (text or "").strip():
+        out = out[:-1].rstrip() + "…"
+    return out
+
+
+def draw_footer(draw: ImageDraw.ImageDraw, fonts: dict, now: datetime):
+    y = H - 26
+    draw.line([(16, y - 4), (W - 16, y - 4)], fill=0, width=1)
+    quote_raw, source_raw = footer_text(now)
+    quote = _fit_text(draw, quote_raw, fonts["tiny"], W - 32)
+    source = _fit_text(draw, source_raw, fonts["tiny"], W - 32)
+    draw.text((W // 2, y), quote, fill=0, font=fonts["tiny"], anchor="ma")
+    draw.text((W // 2, y + 10), source, fill=0, font=fonts["tiny"], anchor="ma")
 
 
 def load_cached_full_image(cache_image: str) -> Image.Image:
@@ -656,6 +743,7 @@ def render(data: dict, now: datetime = None) -> Image.Image:
         draw.line([(16, ry+row_h-1), (W-16, ry+row_h-1)], fill=200, width=1)
 
     y = y + len(rooms) * row_h
+    draw_footer(draw, fonts, now)
 
     return img
 
