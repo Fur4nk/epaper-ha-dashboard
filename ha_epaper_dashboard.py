@@ -594,10 +594,12 @@ def draw_footer(draw: ImageDraw.ImageDraw, fonts: dict, now: datetime):
     y = H - 26
     draw.line([(16, y - 4), (W - 16, y - 4)], fill=0, width=1)
     quote_raw, source_raw = footer_text(now)
-    quote = _fit_text(draw, quote_raw, fonts["tiny"], W - 32)
+    quote_font = fonts["weather_sub"]
+    source_font = fonts["tiny"]
+    quote = _fit_text(draw, quote_raw, quote_font, W - 32)
     source = _fit_text(draw, source_raw, fonts["tiny"], W - 32)
-    draw.text((W // 2, y), quote, fill=0, font=fonts["tiny"], anchor="ma")
-    draw.text((W // 2, y + 10), source, fill=0, font=fonts["tiny"], anchor="ma")
+    draw.text((W // 2, y - 1), quote, fill=0, font=quote_font, anchor="ma")
+    draw.text((W // 2, y + 10), source, fill=0, font=source_font, anchor="ma")
 
 
 def load_cached_full_image(cache_image: str) -> Image.Image:
