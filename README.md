@@ -11,10 +11,7 @@ epaper-dashboard/
 ├── config.json.example         # rooms/entities template (safe to commit)
 ├── config.json                 # your configuration (safe to commit, no secrets)
 ├── secrets.json.example        # credentials template (safe to commit)
-├── secrets.json                # your HA credentials (DO NOT commit)
-├── .gitignore                  # excludes secrets.json
-├── epaper-dashboard.service    # systemd unit
-└── epaper-dashboard.timer      # systemd timer (5 min refresh)
+└── secrets.json                # your HA credentials (DO NOT commit)
 ```
 
 ## 1. Dependencies
@@ -69,9 +66,52 @@ python3 ha_epaper_dashboard.py
 
 ## 6. Systemd
 
+Create `/etc/systemd/system/epaper-dashboard.service`:
+
+```ini
+[Unit]
+Description=Home Assistant e-Paper Dashboard refresh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+Group=pi
+WorkingDirectory=/home/pi
+ExecStart=/usr/bin/python3 /home/pi/ha_epaper_dashboard.py
+ExecStartPre=/bin/sleep 5
+Restart=on-failure
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=epaper-dashboard
+NoNewPrivileges=false
+ProtectSystem=strict
+ReadWritePaths=/tmp
+SupplementaryGroups=spi gpio
+```
+
+Create `/etc/systemd/system/epaper-dashboard.timer`:
+
+```ini
+[Unit]
+Description=Refresh e-Paper dashboard every 5 minutes
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=5min
+RandomizedDelaySec=10
+AccuracySec=30
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+Then enable:
+
 ```bash
-sudo cp epaper-dashboard.service /etc/systemd/system/
-sudo cp epaper-dashboard.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now epaper-dashboard.timer
 ```
