@@ -15,6 +15,7 @@ Usage:
 import os
 import sys
 import math
+import time
 import logging
 import argparse
 import requests
@@ -55,6 +56,9 @@ QUOTE_CACHE_FILE = _config.get("quote_cache_file", "/tmp/epaper_daily_quote.json
 HEADER_WEEKDAY_FORMAT = _config.get("header_weekday_format", "full")
 HEADER_MONTH_FORMAT = _config.get("header_month_format", "full")
 FORECAST_WEEKDAY_FORMAT = _config.get("forecast_weekday_format", "abbr")
+CLOCK_PARTIAL_REFRESH = _config.get("clock_partial_refresh", False)
+CLOCK_DAEMON_INTERVAL_SEC = int(_config.get("clock_daemon_interval_sec", 60))
+CLOCK_DAEMON_FULL_EVERY = int(_config.get("clock_daemon_full_every", 5))
 
 EPD_MODULE = "epd7in5_V2"
 W, H = 480, 800
@@ -868,6 +872,22 @@ def _resolve_epd_lib_path(custom_path: str = ""):
     return epd_path, normalized
 
 
+def _load_epd_driver(epd_lib_path: str = ""):
+    epd_path, checked_paths = _resolve_epd_lib_path(epd_lib_path)
+    if epd_path and epd_path not in sys.path:
+        sys.path.insert(0, epd_path)
+    try:
+        from waveshare_epd import epd7in5_V2 as epd_driver
+    except ModuleNotFoundError as e:
+        raise ModuleNotFoundError(
+            "waveshare_epd not found. Checked paths: "
+            + ", ".join(checked_paths)
+            + ". Set EPD_LIB_PATH or use --epd-lib-path."
+        ) from e
+    log.info(f"Using Waveshare library path: {epd_path}")
+    return epd_driver
+
+
 def _first_callable(obj, names):
     for name in names:
         fn = getattr(obj, name, None)
@@ -922,26 +942,19 @@ def _safe_partial_refresh(epd, disp_fn, buffer, rect=None):
     return False
 
 
-def send_to_epaper(img: Image.Image, epd_lib_path: str = "", mode: str = "full"):
-    epd_path, checked_paths = _resolve_epd_lib_path(epd_lib_path)
-    if epd_path and epd_path not in sys.path:
-        sys.path.insert(0, epd_path)
-    try:
-        from waveshare_epd import epd7in5_V2 as epd_driver
-    except ModuleNotFoundError as e:
-        raise ModuleNotFoundError(
-            "waveshare_epd not found. Checked paths: "
-            + ", ".join(checked_paths)
-            + ". Set EPD_LIB_PATH or use --epd-lib-path."
-        ) from e
-
-    log.info(f"Using Waveshare library path: {epd_path}")
+def send_to_epaper(
+    img: Image.Image,
+    epd_lib_path: str = "",
+    mode: str = "full",
+    clock_partial_refresh: bool = False,
+):
+    epd_driver = _load_epd_driver(epd_lib_path)
     log.info("Initializing e-Paper...")
     epd = epd_driver.EPD()
     img_hw = img.rotate(90, expand=True)
     buffer = epd.getbuffer(img_hw)
 
-    if mode == "clock":
+    if mode == "clock" and clock_partial_refresh:
         init_fn, init_name = _first_callable(epd, ["init_fast", "init_Fast", "init"])
         disp_fn, disp_name = _first_callable(epd, ["displayPartial", "display_partial", "display_Partial"])
         if init_fn and disp_fn:
@@ -956,12 +969,82 @@ def send_to_epaper(img: Image.Image, epd_lib_path: str = "", mode: str = "full")
             log.warning("Partial refresh not supported by this driver, using full refresh for clock mode")
             epd.init()
             epd.display(buffer)
+    elif mode == "clock":
+        log.info("Clock mode using full refresh (clock_partial_refresh disabled)")
+        epd.init()
+        epd.display(buffer)
     else:
         epd.init()
         log.info("Refreshing display...")
         epd.display(buffer)
     log.info("Sleep mode")
     epd.sleep()
+
+
+def run_clock_daemon(
+    epd_lib_path: str,
+    cache_image: str,
+    interval_sec: int,
+    full_every: int,
+    partial_refresh: bool,
+    demo: bool,
+):
+    epd_driver = _load_epd_driver(epd_lib_path)
+    epd = epd_driver.EPD()
+    clock_rect_hw = _portrait_rect_to_hw(CLOCK_RECT_PORTRAIT)
+    init_partial_fn, init_name = _first_callable(epd, ["init_fast", "init_Fast", "init"])
+    disp_partial_fn, disp_name = _first_callable(epd, ["displayPartial", "display_partial", "display_Partial"])
+    partial_enabled = bool(partial_refresh and init_partial_fn and disp_partial_fn)
+    if partial_enabled:
+        log.info(f"Clock daemon partial enabled ({init_name} + {disp_name})")
+    else:
+        log.warning("Clock daemon running without partial refresh (set clock_partial_refresh=true)")
+
+    tick_count = 0
+    img = load_cached_full_image(cache_image)
+    log.info("Clock daemon started")
+    try:
+        while True:
+            now = datetime.now()
+            do_full = tick_count == 0 or (tick_count % full_every == 0)
+            if do_full:
+                if demo:
+                    data = demo_data()
+                else:
+                    data = fetch_all_data()
+                img = render(data, now=now)
+                try:
+                    img.save(cache_image, "PNG")
+                except Exception as e:
+                    log.warning(f"Failed to update cache image {cache_image}: {e}")
+                buffer = epd.getbuffer(img.rotate(90, expand=True))
+                epd.init()
+                epd.display(buffer)
+            else:
+                update_clock_header(img, now=now)
+                buffer = epd.getbuffer(img.rotate(90, expand=True))
+                if partial_enabled:
+                    init_partial_fn()
+                    if not _safe_partial_refresh(epd, disp_partial_fn, buffer, rect=clock_rect_hw):
+                        log.warning("Clock daemon partial failed, switching to full refresh")
+                        partial_enabled = False
+                        epd.init()
+                        epd.display(buffer)
+                else:
+                    epd.init()
+                    epd.display(buffer)
+
+            tick_count += 1
+            now_ts = time.time()
+            sleep_s = max(0.1, interval_sec - (now_ts % interval_sec))
+            time.sleep(sleep_s)
+    except KeyboardInterrupt:
+        log.info("Clock daemon stopped")
+    finally:
+        try:
+            epd.sleep()
+        except Exception:
+            pass
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  MAIN                                                                    ║
@@ -973,13 +1056,48 @@ def main():
     parser.add_argument("--simulate", action="store_true", help="Save PNG instead of driving e-paper")
     parser.add_argument("--demo", action="store_true", help="Use demo data instead of fetching from HA")
     parser.add_argument("--output", default="/tmp/epaper_dashboard.png", help="PNG output path")
-    parser.add_argument("--mode", choices=["full", "clock"], default="full", help="full: all data, clock: header only")
+    parser.add_argument(
+        "--mode",
+        choices=["full", "clock", "clock-daemon"],
+        default="full",
+        help="full: all data, clock: header only oneshot, clock-daemon: continuous clock updates",
+    )
     parser.add_argument("--epd-lib-path", default="", help="Path to Waveshare python lib dir")
     parser.add_argument("--icons-dir", default="", help="Path to icon assets directory")
+    parser.add_argument(
+        "--clock-partial-refresh",
+        action="store_true",
+        help="Enable partial refresh in clock/clock-daemon mode (can cause artifacts on some panels)",
+    )
     parser.add_argument("--cache-image", default="/tmp/epaper_dashboard_full.png",
                         help="Cached full image used by clock mode")
+    parser.add_argument(
+        "--clock-interval-sec",
+        type=int,
+        default=CLOCK_DAEMON_INTERVAL_SEC,
+        help="Clock daemon tick interval (seconds)",
+    )
+    parser.add_argument(
+        "--clock-full-every",
+        type=int,
+        default=CLOCK_DAEMON_FULL_EVERY,
+        help="Clock daemon force full refresh every N ticks",
+    )
     args = parser.parse_args()
     ICON_ASSETS = IconAssets(args.icons_dir)
+    args.clock_interval_sec = max(1, int(args.clock_interval_sec))
+    args.clock_full_every = max(1, int(args.clock_full_every))
+
+    if args.mode == "clock-daemon":
+        run_clock_daemon(
+            epd_lib_path=args.epd_lib_path,
+            cache_image=args.cache_image,
+            interval_sec=args.clock_interval_sec,
+            full_every=args.clock_full_every,
+            partial_refresh=args.clock_partial_refresh or bool(CLOCK_PARTIAL_REFRESH),
+            demo=args.demo,
+        )
+        return
 
     if args.mode == "clock":
         log.info("Clock-only mode: reusing cached full image")
@@ -1004,7 +1122,13 @@ def main():
         img.save(args.output, "PNG")
         log.info(f"Preview: {args.output}")
     else:
-        send_to_epaper(img, args.epd_lib_path, mode=args.mode)
+        clock_partial_refresh = args.clock_partial_refresh or bool(CLOCK_PARTIAL_REFRESH)
+        send_to_epaper(
+            img,
+            args.epd_lib_path,
+            mode=args.mode,
+            clock_partial_refresh=clock_partial_refresh,
+        )
         log.info("Done!")
 
 if __name__ == "__main__":

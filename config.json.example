@@ -14,6 +14,9 @@
     "header_weekday_format": "full",
     "header_month_format": "full",
     "forecast_weekday_format": "abbr",
+    "clock_partial_refresh": true,
+    "clock_daemon_interval_sec": 60,
+    "clock_daemon_full_every": 5,
     "rooms": [
         {"name": "Cucina",     "icon": "kitchen",    "temp": "sensor.temp_umi_cucina_temperature",     "hum": "sensor.temp_umi_cucina_humidity"},
         {"name": "Soggiorno",  "icon": "livingroom", "temp": "sensor.temp_umi_soggiorno_temperature",  "hum": "sensor.temp_umi_soggiorno_humidity"},
