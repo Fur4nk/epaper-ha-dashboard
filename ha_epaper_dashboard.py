@@ -56,6 +56,8 @@ QUOTE_CACHE_FILE = _config.get("quote_cache_file", "/tmp/epaper_daily_quote.json
 EPD_MODULE = "epd7in5_V2"
 W, H = 480, 800
 HEADER_H = 56
+# Portrait area that contains the clock text (top-right in UI coordinates).
+CLOCK_RECT_PORTRAIT = (300, 0, W, HEADER_H)
 
 FONT_DIR = "/usr/share/fonts/truetype/dejavu"
 DEFAULT_ICON_DIR = os.path.join(SCRIPT_DIR, "assets", "icons")
@@ -590,16 +592,59 @@ def _fit_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, m
     return out
 
 
+def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_w: int, max_lines: int):
+    words = (text or "").split()
+    if not words:
+        return [""]
+    lines = []
+    current = words[0]
+    for w in words[1:]:
+        trial = f"{current} {w}"
+        if draw.textlength(trial, font=font) <= max_w:
+            current = trial
+        else:
+            lines.append(current)
+            current = w
+            if len(lines) >= max_lines:
+                break
+    if len(lines) < max_lines:
+        lines.append(current)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+    if len(lines) == max_lines:
+        lines[-1] = _fit_text(draw, lines[-1], font, max_w)
+    return lines
+
+
+def _text_size(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont):
+    l, t, r, b = draw.textbbox((0, 0), text, font=font)
+    return r - l, b - t
+
+
 def draw_footer(draw: ImageDraw.ImageDraw, fonts: dict, now: datetime):
-    y = H - 26
-    draw.line([(16, y - 4), (W - 16, y - 4)], fill=0, width=1)
+    footer_top = H - 50
+    draw.line([(16, footer_top), (W - 16, footer_top)], fill=0, width=1)
     quote_raw, source_raw = footer_text(now)
     quote_font = fonts["weather_sub"]
     source_font = fonts["tiny"]
-    quote = _fit_text(draw, quote_raw, quote_font, W - 32)
-    source = _fit_text(draw, source_raw, fonts["tiny"], W - 32)
-    draw.text((W // 2, y - 1), quote, fill=0, font=quote_font, anchor="ma")
-    draw.text((W // 2, y + 10), source, fill=0, font=source_font, anchor="ma")
+    max_w = W - 32
+    quote_lines = _wrap_text(draw, quote_raw, quote_font, max_w, max_lines=2)
+    source = _fit_text(draw, source_raw, source_font, max_w)
+
+    quote_h = sum(_text_size(draw, ln, quote_font)[1] for ln in quote_lines if ln)
+    quote_gaps = max(0, len([ln for ln in quote_lines if ln]) - 1) * 2
+    source_h = _text_size(draw, source, source_font)[1] if source else 0
+    y = H - (quote_h + quote_gaps + source_h + 8)
+
+    for ln in quote_lines:
+        if not ln:
+            continue
+        w, h = _text_size(draw, ln, quote_font)
+        draw.text(((W - w) // 2, y), ln, fill=0, font=quote_font)
+        y += h + 2
+    if source:
+        w, _ = _text_size(draw, source, source_font)
+        draw.text(((W - w) // 2, y + 2), source, fill=0, font=source_font)
 
 
 def load_cached_full_image(cache_image: str) -> Image.Image:
@@ -784,13 +829,42 @@ def _first_callable(obj, names):
     return None, None
 
 
-def _safe_partial_refresh(epd, disp_fn, buffer):
+def _portrait_rect_to_hw(rect):
+    x0, y0, x1, y1 = rect
+    # PIL rotate(90, expand=True): (x, y) -> (y, W - 1 - x)
+    hx0 = int(y0)
+    hx1 = int(y1)
+    hy0 = int(W - x1)
+    hy1 = int(W - x0)
+    return hx0, hy0, hx1, hy1
+
+
+def _align_rect_for_epd(rect, width, height):
+    x0, y0, x1, y1 = rect
+    x0 = max(0, min(width - 1, x0))
+    y0 = max(0, min(height - 1, y0))
+    x1 = max(1, min(width, x1))
+    y1 = max(1, min(height, y1))
+    # Many EPD drivers need x aligned to 8-pixel boundaries.
+    x0 = (x0 // 8) * 8
+    x1 = min(width, ((x1 + 7) // 8) * 8)
+    if x1 <= x0:
+        x1 = min(width, x0 + 8)
+    if y1 <= y0:
+        y1 = min(height, y0 + 1)
+    return x0, y0, x1, y1
+
+
+def _safe_partial_refresh(epd, disp_fn, buffer, rect=None):
     width = int(getattr(epd, "width", 800))
     height = int(getattr(epd, "height", 480))
+    if rect is None:
+        rect = (0, 0, width, height)
+    x0, y0, x1, y1 = _align_rect_for_epd(rect, width, height)
     attempts = [
+        lambda: disp_fn(buffer, x0, y0, x1, y1),
+        lambda: disp_fn(buffer, x0, y0, x1 - 1, y1 - 1),
         lambda: disp_fn(buffer),
-        lambda: disp_fn(buffer, 0, 0, width, height),
-        lambda: disp_fn(buffer, 0, 0, width - 1, height - 1),
     ]
     for attempt in attempts:
         try:
@@ -826,7 +900,8 @@ def send_to_epaper(img: Image.Image, epd_lib_path: str = "", mode: str = "full")
         if init_fn and disp_fn:
             init_fn()
             log.info(f"Clock refresh using partial mode ({init_name} + {disp_name})")
-            if not _safe_partial_refresh(epd, disp_fn, buffer):
+            clock_rect_hw = _portrait_rect_to_hw(CLOCK_RECT_PORTRAIT)
+            if not _safe_partial_refresh(epd, disp_fn, buffer, rect=clock_rect_hw):
                 log.warning("Partial signature mismatch, using full refresh for clock mode")
                 epd.init()
                 epd.display(buffer)
