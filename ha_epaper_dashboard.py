@@ -89,19 +89,19 @@ def load_fonts() -> dict:
         bold = os.path.join(FONT_DIR, "DejaVuSans-Bold.ttf")
         mono = os.path.join(FONT_DIR, "DejaVuSansMono-Bold.ttf")
         return {
-            "title":       ImageFont.truetype(bold, 26),
-            "time":        ImageFont.truetype(mono, 26),
-            "date":        ImageFont.truetype(reg, 13),
-            "section":     ImageFont.truetype(bold, 12),
-            "room_name":   ImageFont.truetype(bold, 16),
+            "title":       ImageFont.truetype(bold, 28),
+            "time":        ImageFont.truetype(mono, 28),
+            "date":        ImageFont.truetype(reg, 14),
+            "section":     ImageFont.truetype(bold, 13),
+            "room_name":   ImageFont.truetype(bold, 18),
             "temp_big":    ImageFont.truetype(mono, 32),
             "temp_room":   ImageFont.truetype(mono, 24),
             "hum_room":    ImageFont.truetype(mono, 16),
-            "weather_sub": ImageFont.truetype(reg, 13),
+            "weather_sub": ImageFont.truetype(reg, 14),
             "fc_day":      ImageFont.truetype(bold, 12),
             "fc_temp":     ImageFont.truetype(mono, 12),
             "tiny":        ImageFont.truetype(reg, 10),
-            "col_hdr":     ImageFont.truetype(bold, 10),
+            "col_hdr":     ImageFont.truetype(bold, 11),
         }
     except OSError:
         log.warning("DejaVu fonts not found, using default")
@@ -740,7 +740,7 @@ def render(data: dict, now: datetime = None) -> Image.Image:
     if not icon_ok:
         Icons.weather(draw, icon_cx, icon_cy, cond, r=26)
     cond_text = CONDITION_LABELS.get(cond, cond.replace("_", " ").title())
-    draw.text((icon_cx, icon_cy+34), cond_text, fill=0, font=fonts["tiny"], anchor="mt")
+    draw.text((icon_cx, icon_cy + 34), cond_text, fill=0, font=fonts["weather_sub"], anchor="mt")
 
     # Big temperature
     tx = 120
@@ -754,7 +754,7 @@ def render(data: dict, now: datetime = None) -> Image.Image:
     if out_hum is not None: parts.append(f"Umidità {out_hum:.0f}%")
     if wind is not None:    parts.append(f"Vento {wind:.0f} km/h")
     draw.text((tx, y+36), "  ·  ".join(parts), fill=0, font=fonts["weather_sub"])
-    y += 70
+    y += 80
 
     # ── FORECAST ────────────────────────────────────────────
     forecast = weather.get("forecast", [])
@@ -802,7 +802,7 @@ def render(data: dict, now: datetime = None) -> Image.Image:
     # ── ROOM ROWS ───────────────────────────────────────────
     rooms = data["rooms"]
     available = H - y - 30
-    row_h = min(available // len(rooms), 62)
+    row_h = min(available // len(rooms), 54)
 
     for i, room in enumerate(rooms):
         ry = y + i * row_h
@@ -850,6 +850,18 @@ def render(data: dict, now: datetime = None) -> Image.Image:
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  E-PAPER OUTPUT                                                          ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
+
+
+def room_rows_start_y(has_forecast: bool) -> int:
+    y = HEADER_H
+    y += 10       # top gap after header
+    y += 18       # "ESTERNO" label block
+    y += 80       # outdoor weather block height
+    if has_forecast:
+        y += 2 + 10 + 60  # line gap + forecast top gap + forecast block
+    y += 4 + 10   # separator and gap
+    y += 16 + 4   # rooms header and line gap
+    return y
 
 def _resolve_epd_lib_path(custom_path: str = ""):
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1008,6 +1020,7 @@ def run_clock_daemon(
 
     tick_count = 0
     img = load_cached_full_image(cache_image)
+    last_full_img = img.copy()
     log.info("Clock daemon started")
     try:
         while True:
@@ -1024,6 +1037,15 @@ def run_clock_daemon(
                     img.save(cache_image, "PNG")
                 except Exception as e:
                     log.warning(f"Failed to update cache image {cache_image}: {e}")
+                last_full_img = img.copy()
+            elif last_full_img is not None:
+                # Keep room names/icons and footer unchanged during partial ticks.
+                has_forecast = bool(data.get("weather", {}).get("forecast"))
+                rows_y = room_rows_start_y(has_forecast)
+                footer_y = H - 52
+                names_x1 = W - 150
+                img.paste(last_full_img.crop((0, rows_y, names_x1, footer_y)), (0, rows_y))
+                img.paste(last_full_img.crop((0, footer_y, W, H)), (0, footer_y))
             buffer = epd.getbuffer(img.rotate(90, expand=True))
 
             if do_full:
