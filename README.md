@@ -3,6 +3,10 @@
 Home Assistant dashboard for Waveshare 7.5" V2 e-Paper display (800×480) in portrait mode.  
 Displays indoor room temperature/humidity, outdoor weather, and 4-day forecast.
 
+## Preview
+
+![e-Paper dashboard preview](epaper_dashboard.png)
+
 ## File structure
 
 ```
