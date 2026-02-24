@@ -57,6 +57,7 @@ QUOTE_CACHE_FILE = _config.get("quote_cache_file", "/tmp/epaper_daily_quote.json
 HEADER_WEEKDAY_FORMAT = _config.get("header_weekday_format", "full")
 HEADER_MONTH_FORMAT = _config.get("header_month_format", "full")
 FORECAST_WEEKDAY_FORMAT = _config.get("forecast_weekday_format", "abbr")
+INTRADAY_LABELS = _config.get("intraday_labels", ["Morning", "Afternoon", "Evening"])
 CLOCK_PARTIAL_REFRESH = _config.get("clock_partial_refresh", True)
 CLOCK_PARTIAL_FULLSCREEN = _config.get("clock_partial_fullscreen", True)
 CLOCK_DAEMON_INTERVAL_SEC = int(_config.get("clock_daemon_interval_sec", 60))
@@ -94,6 +95,7 @@ def load_fonts() -> dict:
             "date":        ImageFont.truetype(reg, 14),
             "section":     ImageFont.truetype(bold, 13),
             "room_name":   ImageFont.truetype(bold, 18),
+            "temp_outdoor": ImageFont.truetype(mono, 36),
             "temp_big":    ImageFont.truetype(mono, 32),
             "temp_room":   ImageFont.truetype(mono, 24),
             "hum_room":    ImageFont.truetype(mono, 16),
@@ -106,7 +108,7 @@ def load_fonts() -> dict:
     except OSError:
         log.warning("DejaVu fonts not found, using default")
         d = ImageFont.load_default()
-        return {k: d for k in ["title","time","date","section","room_name","temp_big",
+        return {k: d for k in ["title","time","date","section","room_name","temp_outdoor","temp_big",
             "temp_room","hum_room","weather_sub","fc_day","fc_temp","tiny","col_hdr"]}
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
@@ -414,9 +416,52 @@ def ha_get_state(entity_id: str):
         log.warning(f"Failed to fetch {entity_id}: {e}")
         return None
 
+
+def _extract_dayparts_from_hourly(hourly_forecast: list):
+    if not isinstance(hourly_forecast, list):
+        return {}
+    targets = {"morning": 9, "afternoon": 15, "evening": 21}
+    phase_hours = {
+        "morning": range(6, 12),
+        "afternoon": range(12, 18),
+        "evening": range(18, 24),
+    }
+    buckets = {k: [] for k in targets}
+    today = datetime.now().date()
+    for item in hourly_forecast:
+        if not isinstance(item, dict):
+            continue
+        dt_str = item.get("datetime")
+        temp = item.get("temperature")
+        cond = item.get("condition", "unknown")
+        if dt_str is None or temp is None:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(dt_str).replace("Z", "+00:00"))
+        except Exception:
+            continue
+        if dt.date() != today:
+            continue
+        for key, hours in phase_hours.items():
+            if dt.hour in hours:
+                buckets[key].append({"temp": float(temp), "cond": cond, "hour": dt.hour})
+                break
+
+    result = {}
+    for key, samples in buckets.items():
+        if not samples:
+            continue
+        t_min = min(s["temp"] for s in samples)
+        t_max = max(s["temp"] for s in samples)
+        target_h = targets[key]
+        rep = min(samples, key=lambda s: abs(s["hour"] - target_h))
+        result[key] = {"min": t_min, "max": t_max, "condition": rep["cond"]}
+    return result
+
+
 def ha_get_weather() -> dict:
     result = {"condition": "unknown", "temperature": None, "humidity": None,
-              "wind_speed": None, "forecast": []}
+              "wind_speed": None, "forecast": [], "dayparts": {}}
     if WEATHER_ENTITY:
         try:
             r = requests.post(f"{HA_URL}/api/services/weather/get_forecasts?return_response",
@@ -445,6 +490,18 @@ def ha_get_weather() -> dict:
                                         break
                                 if result["forecast"]:
                                     break
+        except Exception:
+            pass
+        try:
+            r = requests.post(f"{HA_URL}/api/services/weather/get_forecasts?return_response",
+                              headers=_ha_headers(),
+                              json={"entity_id": WEATHER_ENTITY, "type": "hourly"}, timeout=10)
+            if r.ok:
+                svc = r.json()
+                service_response = svc.get("service_response", {}) if isinstance(svc, dict) else {}
+                weather_data = service_response.get(WEATHER_ENTITY, {}) if isinstance(service_response, dict) else {}
+                hourly = weather_data.get("forecast", []) if isinstance(weather_data, dict) else []
+                result["dayparts"] = _extract_dayparts_from_hourly(hourly)
         except Exception:
             pass
         try:
@@ -490,6 +547,11 @@ def demo_data() -> dict:
         ],
         "weather": {
             "condition": "partlycloudy", "temperature": 8.2, "humidity": 72, "wind_speed": 12,
+            "dayparts": {
+                "morning": {"temperature": 7.0, "condition": "cloudy"},
+                "afternoon": {"temperature": 12.0, "condition": "partlycloudy"},
+                "evening": {"temperature": 9.0, "condition": "rainy"},
+            },
             "forecast": [
                 {"datetime": "2026-02-24", "condition": "rainy",        "temperature": 9,  "templow": 3},
                 {"datetime": "2026-02-25", "condition": "cloudy",       "temperature": 11, "templow": 5},
@@ -552,6 +614,9 @@ if HEADER_MONTH_FORMAT not in ("full", "abbr"):
 if FORECAST_WEEKDAY_FORMAT not in ("full", "abbr"):
     log.warning("Invalid forecast_weekday_format in config.json, using 'abbr'")
     FORECAST_WEEKDAY_FORMAT = "abbr"
+if not isinstance(INTRADAY_LABELS, list) or len(INTRADAY_LABELS) != 3:
+    log.warning("Invalid intraday_labels in config.json, using defaults")
+    INTRADAY_LABELS = ["Morning", "Afternoon", "Evening"]
 
 FALLBACK_QUOTE = (
     "Sembra sempre impossibile finche non viene fatto.",
@@ -730,42 +795,66 @@ def render(data: dict, now: datetime = None) -> Image.Image:
     out_temp = weather.get("temperature")
     out_hum = weather.get("humidity")
     wind = weather.get("wind_speed")
+    dayparts = weather.get("dayparts", {}) if isinstance(weather, dict) else {}
 
     draw.text((16, y), "ESTERNO", fill=0, font=fonts["section"])
-    y += 18
+    y += 16
 
-    # Large weather icon
-    icon_cx, icon_cy = 56, y + 28
-    icon_ok = ICON_ASSETS.draw_weather(img, cond, icon_cx, icon_cy, 56) if ICON_ASSETS else False
-    if not icon_ok:
-        Icons.weather(draw, icon_cx, icon_cy, cond, r=26)
+    # Single-row layout: current (left) + intraday tiles (right)
+    row_y = y
+    row_h = 62
     cond_text = CONDITION_LABELS.get(cond, cond.replace("_", " ").title())
-    draw.text((icon_cx, icon_cy + 34), cond_text, fill=0, font=fonts["weather_sub"], anchor="mt")
 
-    # Big temperature
-    tx = 120
-    if out_temp is not None:
-        draw.text((tx, y), f"{out_temp:.1f}°", fill=0, font=fonts["temp_big"])
-    else:
-        draw.text((tx, y), "—.—°", fill=0, font=fonts["temp_big"])
+    left_x = 16
+    split_x = 190
+    temp_text = f"{int(round(float(out_temp)))}°" if out_temp is not None else "—°"
+    draw.text((left_x, row_y + 9), temp_text, fill=0, font=fonts["temp_outdoor"])
+    info_x = left_x + 76
+    cond_text = _fit_text(draw, cond_text, fonts["tiny"], split_x - info_x - 12)
+    draw.text((info_x, row_y + 10), cond_text, fill=0, font=fonts["tiny"])
+    label_w = 18
+    draw.text((info_x, row_y + 24), "Um", fill=0, font=fonts["tiny"])
+    draw.text((info_x + label_w, row_y + 24),
+              f"{out_hum:.0f}%" if out_hum is not None else "--%", fill=0, font=fonts["tiny"])
+    draw.text((info_x, row_y + 37), "Ve", fill=0, font=fonts["tiny"])
+    draw.text((info_x + label_w, row_y + 37),
+              f"{wind:.0f} km/h" if wind is not None else "-- km/h", fill=0, font=fonts["tiny"])
 
-    # Sub info
-    parts = []
-    if out_hum is not None: parts.append(f"Umidità {out_hum:.0f}%")
-    if wind is not None:    parts.append(f"Vento {wind:.0f} km/h")
-    draw.text((tx, y+36), "  ·  ".join(parts), fill=0, font=fonts["weather_sub"])
-    y += 80
+    # Vertical separator only inside the outdoor row.
+    # Keep top/bottom margins so it does not touch adjacent section lines.
+    sep_x = split_x - 8
+    sep_y0 = row_y + 8
+    sep_y1 = row_y + row_h - 8
+    draw.line([(sep_x, sep_y0), (sep_x, sep_y1)], fill=0, width=1)
+
+    intraday_keys = list(zip(INTRADAY_LABELS, ["morning", "afternoon", "evening"]))
+    col_w = (W - split_x - 8) // 3
+    for i, (label, key) in enumerate(intraday_keys):
+        fx = split_x + i * col_w + col_w // 2
+        entry = dayparts.get(key, {}) if isinstance(dayparts, dict) else {}
+        t_min = entry.get("min") if isinstance(entry, dict) else None
+        t_max = entry.get("max") if isinstance(entry, dict) else None
+        e_cond = entry.get("condition", cond) if isinstance(entry, dict) else cond
+        mm_txt = f"{float(t_min):.0f}°/{float(t_max):.0f}°" if t_min is not None and t_max is not None else "—°/—°"
+        draw.text((fx, row_y + 2), label, fill=0, font=fonts["fc_day"], anchor="mt")
+        intraday_icon_ok = ICON_ASSETS.draw_weather(img, e_cond, fx, row_y + 28, 26) if ICON_ASSETS else False
+        if not intraday_icon_ok:
+            Icons.weather(draw, fx, row_y + 28, e_cond, r=13)
+        draw.text((fx, row_y + 44), mm_txt, fill=0, font=fonts["fc_temp"], anchor="mt")
+
+    y += row_h
 
     # ── FORECAST ────────────────────────────────────────────
     forecast = weather.get("forecast", [])
     if forecast:
         y += 2
-        draw.line([(16, y), (W-16, y)], fill=0, width=1)
+        x0, x1 = 8, W - 8
+        draw.line([(x0, y), (x1, y)], fill=0, width=1)
         y += 10
         n_fc = min(len(forecast), 4)
-        fc_w = (W - 32) // n_fc
+        fc_w = (x1 - x0) // n_fc
         for i, fc in enumerate(forecast[:n_fc]):
-            fx = 16 + i*fc_w + fc_w//2
+            fx = x0 + i * fc_w + fc_w // 2
             try:
                 dt_str = fc["datetime"]
                 fc_date = datetime.fromisoformat(dt_str.replace("Z","+00:00")) if "T" in dt_str \
@@ -776,11 +865,13 @@ def render(data: dict, now: datetime = None) -> Image.Image:
                 dl = f"+{i+1}"
             draw.text((fx, y), dl, fill=0, font=fonts["fc_day"], anchor="mt")
             fc_cond = fc.get("condition", "unknown")
-            fc_icon_ok = ICON_ASSETS.draw_weather(img, fc_cond, fx, y + 26, 28) if ICON_ASSETS else False
+            fc_icon_ok = ICON_ASSETS.draw_weather(img, fc_cond, fx, y + 26, 32) if ICON_ASSETS else False
             if not fc_icon_ok:
-                Icons.weather(draw, fx, y + 26, fc_cond, r=14)
-            t_hi = fc.get("temperature","—")
-            t_lo = fc.get("templow","—")
+                Icons.weather(draw, fx, y + 26, fc_cond, r=16)
+            t_hi_v = fc.get("temperature")
+            t_lo_v = fc.get("templow")
+            t_hi = f"{int(round(float(t_hi_v)))}" if t_hi_v not in (None, "—") else "—"
+            t_lo = f"{int(round(float(t_lo_v)))}" if t_lo_v not in (None, "—") else "—"
             draw.text((fx, y+44), f"{t_hi}°/{t_lo}°", fill=0, font=fonts["fc_temp"], anchor="mt")
         y += 60
 
@@ -852,11 +943,11 @@ def render(data: dict, now: datetime = None) -> Image.Image:
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
 
-def room_rows_start_y(has_forecast: bool) -> int:
+def room_rows_start_y(has_forecast: bool, has_intraday: bool) -> int:
     y = HEADER_H
     y += 10       # top gap after header
-    y += 18       # "ESTERNO" label block
-    y += 80       # outdoor weather block height
+    y += 16       # "ESTERNO" label block
+    y += 62       # single-row current + intraday block
     if has_forecast:
         y += 2 + 10 + 60  # line gap + forecast top gap + forecast block
     y += 4 + 10   # separator and gap
@@ -1040,8 +1131,11 @@ def run_clock_daemon(
                 last_full_img = img.copy()
             elif last_full_img is not None:
                 # Keep room names/icons and footer unchanged during partial ticks.
-                has_forecast = bool(data.get("weather", {}).get("forecast"))
-                rows_y = room_rows_start_y(has_forecast)
+                weather_data = data.get("weather", {})
+                has_forecast = bool(weather_data.get("forecast"))
+                dayparts = weather_data.get("dayparts", {}) if isinstance(weather_data, dict) else {}
+                has_intraday = any(dayparts.get(k) is not None for k in ("morning", "afternoon", "evening"))
+                rows_y = room_rows_start_y(has_forecast, has_intraday)
                 footer_y = H - 52
                 names_x1 = W - 150
                 img.paste(last_full_img.crop((0, rows_y, names_x1, footer_y)), (0, rows_y))
