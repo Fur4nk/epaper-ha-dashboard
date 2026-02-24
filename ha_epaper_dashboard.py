@@ -99,12 +99,12 @@ def load_fonts() -> dict:
             "date":        ImageFont.truetype(reg, 14),
             "section":     ImageFont.truetype(bold, 13),
             "room_name":   ImageFont.truetype(bold, 19),
-            "temp_outdoor": ImageFont.truetype(mono, 36),
+            "temp_outdoor": ImageFont.truetype(mono, 40),
             "temp_big":    ImageFont.truetype(mono, 32),
             "temp_room":   ImageFont.truetype(mono, 24),
             "hum_room":    ImageFont.truetype(mono, 16),
             "weather_sub": ImageFont.truetype(reg, 14),
-            "fc_day":      ImageFont.truetype(bold, 12),
+            "fc_day":      ImageFont.truetype(bold, 13),
             "fc_temp":     ImageFont.truetype(mono, 12),
             "tiny":        ImageFont.truetype(reg, 10),
             "col_hdr":     ImageFont.truetype(bold, 11),
@@ -915,7 +915,7 @@ def render(data: dict, now: datetime = None) -> Image.Image:
     left_x = 16
     split_x = 190
     temp_text = f"{int(round(float(out_temp)))}°" if out_temp is not None else "—°"
-    draw.text((left_x, row_y + 9), temp_text, fill=0, font=fonts["temp_outdoor"])
+    draw.text((left_x, row_y + 10), temp_text, fill=0, font=fonts["temp_outdoor"])
     info_x = left_x + 76
     cond_text = _fit_text(draw, cond_text, fonts["tiny"], split_x - info_x - 12)
     draw.text((info_x, row_y + 8), cond_text, fill=0, font=fonts["tiny"])
@@ -957,10 +957,10 @@ def render(data: dict, now: datetime = None) -> Image.Image:
         e_cond = entry.get("condition", cond) if isinstance(entry, dict) else cond
         mm_txt = f"{float(t_min):.0f}°/{float(t_max):.0f}°" if t_min is not None and t_max is not None else "—°/—°"
         draw.text((fx, row_y + 2), label, fill=0, font=fonts["fc_day"], anchor="mt")
-        intraday_icon_ok = ICON_ASSETS.draw_weather(img, e_cond, fx, row_y + 28, 26) if ICON_ASSETS else False
+        intraday_icon_ok = ICON_ASSETS.draw_weather(img, e_cond, fx, row_y + 35, 32) if ICON_ASSETS else False
         if not intraday_icon_ok:
-            Icons.weather(draw, fx, row_y + 28, e_cond, r=13)
-        draw.text((fx, row_y + 44), mm_txt, fill=0, font=fonts["fc_temp"], anchor="mt")
+            Icons.weather(draw, fx, row_y + 35, e_cond, r=16)
+        draw.text((fx, row_y + 53), mm_txt, fill=0, font=fonts["fc_temp"], anchor="mt")
 
     y += row_h
 
@@ -985,15 +985,15 @@ def render(data: dict, now: datetime = None) -> Image.Image:
                 dl = f"+{i+1}"
             draw.text((fx, y), dl, fill=0, font=fonts["fc_day"], anchor="mt")
             fc_cond = fc.get("condition", "unknown")
-            fc_icon_ok = ICON_ASSETS.draw_weather(img, fc_cond, fx, y + 26, 32) if ICON_ASSETS else False
+            fc_icon_ok = ICON_ASSETS.draw_weather(img, fc_cond, fx, y + 33, 38) if ICON_ASSETS else False
             if not fc_icon_ok:
-                Icons.weather(draw, fx, y + 26, fc_cond, r=16)
+                Icons.weather(draw, fx, y + 33, fc_cond, r=19)
             t_hi_v = fc.get("temperature")
             t_lo_v = fc.get("templow")
             t_hi = f"{int(round(float(t_hi_v)))}" if t_hi_v not in (None, "—") else "—"
             t_lo = f"{int(round(float(t_lo_v)))}" if t_lo_v not in (None, "—") else "—"
-            draw.text((fx, y+44), f"{t_hi}°/{t_lo}°", fill=0, font=fonts["fc_temp"], anchor="mt")
-        y += 60
+            draw.text((fx, y+54), f"{t_hi}°/{t_lo}°", fill=0, font=fonts["fc_temp"], anchor="mt")
+        y += 64
 
     # ── THICK SEPARATOR ─────────────────────────────────────
     y += 4
