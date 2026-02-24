@@ -90,6 +90,7 @@ Optional weekday label overrides:
 - `clock_partial_fullscreen` (`true` = partial su schermo intero, comportamento più simile al demo Waveshare)
 - `clock_daemon_interval_sec` (default `60`)
 - `clock_daemon_full_every` (force full refresh every N ticks, default `240`)
+- `clock_daemon_data_every_min` (refresh non-clock data every N minutes, default `10`)
 
 ## 5. Test
 
@@ -113,7 +114,7 @@ python3 ha_epaper_dashboard.py --mode clock --epd-lib-path ~/src/e-Paper/Raspber
 python3 ha_epaper_dashboard.py --mode clock-daemon --epd-lib-path ~/src/e-Paper/RaspberryPi_JetsonNano/python/lib
 
 # Optional: override daemon timing
-python3 ha_epaper_dashboard.py --mode clock-daemon --clock-interval-sec 60 --clock-full-every 240 --epd-lib-path ~/src/e-Paper/RaspberryPi_JetsonNano/python/lib
+python3 ha_epaper_dashboard.py --mode clock-daemon --clock-interval-sec 60 --clock-data-every-min 10 --clock-full-every 240 --epd-lib-path ~/src/e-Paper/RaspberryPi_JetsonNano/python/lib
 ```
 
 ## 5b. Optional icon assets
@@ -143,7 +144,8 @@ python3 ha_epaper_dashboard.py --simulate --icons-dir /path/to/icons --output pr
 Recommended:
 
 - one long-running daemon service
-- every minute updates clock + temperatures/humidity
+- every minute updates clock (partial, with local scrub)
+- every 10 minutes updates non-clock data
 - every N ticks (default 240) performs full refresh (4h with 60s tick)
 
 Prebuilt unit files are provided in `systemd/` for user `dash` and path `/home/dash/src`.

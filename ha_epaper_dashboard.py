@@ -58,6 +58,7 @@ FOOTER_QUOTE = _config.get("footer_quote", "")
 FOOTER_SOURCE = _config.get("footer_source", "")
 QUOTE_API_URL = _config.get("quote_api_url", "https://zenquotes.io/api/today")
 QUOTE_CACHE_FILE = _config.get("quote_cache_file", "/tmp/epaper_daily_quote.json")
+DAYPARTS_CACHE_FILE = _config.get("dayparts_cache_file", "/tmp/epaper_dayparts_cache.json")
 HEADER_WEEKDAY_FORMAT = _config.get("header_weekday_format", "full")
 HEADER_MONTH_FORMAT = _config.get("header_month_format", "full")
 FORECAST_WEEKDAY_FORMAT = _config.get("forecast_weekday_format", "abbr")
@@ -66,12 +67,14 @@ CLOCK_PARTIAL_REFRESH = _config.get("clock_partial_refresh", True)
 CLOCK_PARTIAL_FULLSCREEN = _config.get("clock_partial_fullscreen", True)
 CLOCK_DAEMON_INTERVAL_SEC = int(_config.get("clock_daemon_interval_sec", 60))
 CLOCK_DAEMON_FULL_EVERY = int(_config.get("clock_daemon_full_every", 240))
+CLOCK_DAEMON_DATA_EVERY_MIN = int(_config.get("clock_daemon_data_every_min", 10))
 
 EPD_MODULE = "epd7in5_V2"
 W, H = 480, 800
 HEADER_H = 56
 # Portrait area that contains the clock text (top-right in UI coordinates).
 CLOCK_RECT_PORTRAIT = (300, 0, W, HEADER_H)
+BODY_RECT_PORTRAIT = (0, HEADER_H, W, H)
 
 FONT_DIR = "/usr/share/fonts/truetype/dejavu"
 DEFAULT_ICON_DIR = os.path.join(SCRIPT_DIR, "assets", "icons")
@@ -94,11 +97,11 @@ def load_fonts() -> dict:
         bold = os.path.join(FONT_DIR, "DejaVuSans-Bold.ttf")
         mono = os.path.join(FONT_DIR, "DejaVuSansMono-Bold.ttf")
         return {
-            "title":       ImageFont.truetype(bold, 28),
-            "time":        ImageFont.truetype(mono, 28),
+            "title":       ImageFont.truetype(bold, 30),
+            "time":        ImageFont.truetype(mono, 30),
             "date":        ImageFont.truetype(reg, 14),
             "section":     ImageFont.truetype(bold, 13),
-            "room_name":   ImageFont.truetype(bold, 18),
+            "room_name":   ImageFont.truetype(bold, 19),
             "temp_outdoor": ImageFont.truetype(mono, 36),
             "temp_big":    ImageFont.truetype(mono, 32),
             "temp_room":   ImageFont.truetype(mono, 24),
@@ -463,6 +466,56 @@ def _extract_dayparts_from_hourly(hourly_forecast: list):
     return result
 
 
+def _normalize_daypart_entry(entry):
+    if not isinstance(entry, dict):
+        return None
+    t_min = _to_float(entry.get("min"))
+    t_max = _to_float(entry.get("max"))
+    cond = str(entry.get("condition", "unknown"))
+    if t_min is None or t_max is None:
+        return None
+    return {"min": t_min, "max": t_max, "condition": cond}
+
+
+def _read_dayparts_cache(today_key: str):
+    try:
+        with open(DAYPARTS_CACHE_FILE) as f:
+            payload = json.load(f)
+    except Exception:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    if payload.get("date") != today_key:
+        return {}
+    if payload.get("entity_id") != WEATHER_ENTITY:
+        return {}
+    raw_dayparts = payload.get("dayparts", {})
+    if not isinstance(raw_dayparts, dict):
+        return {}
+    out = {}
+    for key, value in raw_dayparts.items():
+        normalized = _normalize_daypart_entry(value)
+        if normalized:
+            out[key] = normalized
+    return out
+
+
+def _write_dayparts_cache(today_key: str, dayparts: dict):
+    if not isinstance(dayparts, dict):
+        return
+    safe_dayparts = {}
+    for key, value in dayparts.items():
+        normalized = _normalize_daypart_entry(value)
+        if normalized:
+            safe_dayparts[key] = normalized
+    payload = {"date": today_key, "entity_id": WEATHER_ENTITY, "dayparts": safe_dayparts}
+    try:
+        with open(DAYPARTS_CACHE_FILE, "w") as f:
+            json.dump(payload, f)
+    except Exception as e:
+        log.warning(f"Failed to write dayparts cache {DAYPARTS_CACHE_FILE}: {e}")
+
+
 def _to_float(v):
     try:
         return float(v)
@@ -527,6 +580,17 @@ def ha_get_weather() -> dict:
                 result["dayparts"] = _extract_dayparts_from_hourly(hourly)
         except Exception:
             pass
+        # Keep morning/afternoon visible across the day when HA hourly response
+        # no longer includes those past time slots.
+        today_key = datetime.now().strftime("%Y-%m-%d")
+        cached_dayparts = _read_dayparts_cache(today_key)
+        merged_dayparts = dict(result["dayparts"]) if isinstance(result["dayparts"], dict) else {}
+        for key in ("morning", "afternoon"):
+            if key not in merged_dayparts and key in cached_dayparts:
+                merged_dayparts[key] = cached_dayparts[key]
+        if merged_dayparts:
+            _write_dayparts_cache(today_key, merged_dayparts)
+            result["dayparts"] = merged_dayparts
         try:
             r = requests.get(f"{HA_URL}/api/states/{WEATHER_ENTITY}", headers=_ha_headers(), timeout=10)
             r.raise_for_status()
@@ -724,15 +788,18 @@ def footer_text(now: datetime):
 
 
 def draw_header(draw: ImageDraw.ImageDraw, fonts: dict, now: datetime):
-    draw.rectangle([(0, 0), (W, HEADER_H)], fill=0)
-    draw.text((16, 10), "CASA", fill=255, font=fonts["title"])
-    draw.text((W-16, 10), now.strftime("%H:%M"), fill=255, font=fonts["time"], anchor="ra")
+    # Light header to reduce ghosting on frequently updated area.
+    draw.rectangle([(0, 0), (W, HEADER_H)], fill=255)
+    draw.text((16, 8), "CASA", fill=0, font=fonts["title"])
+    draw.text((W-16, 8), now.strftime("%H:%M"), fill=0, font=fonts["time"], anchor="ra")
     weekday_labels = WEEKDAYS_FULL if HEADER_WEEKDAY_FORMAT == "full" else WEEKDAYS_ABBR
     month_labels = MONTHS_FULL if HEADER_MONTH_FORMAT == "full" else MONTHS_ABBR
     day_name = weekday_labels[now.weekday()]
     month_name = month_labels[now.month - 1]
-    draw.text((16, 38), f"{day_name} {now.day} {month_name} {now.year}",
-              fill=255, font=fonts["date"])
+    draw.text((16, 36), f"{day_name} {now.day} {month_name} {now.year}",
+              fill=0, font=fonts["date"])
+    # Strong visual separation between header and weather area.
+    draw.rectangle([(0, HEADER_H - 3), (W, HEADER_H - 1)], fill=0)
 
 
 def update_clock_header(img: Image.Image, now: datetime = None):
@@ -859,18 +926,19 @@ def render(data: dict, now: datetime = None) -> Image.Image:
     draw.text((info_x, row_y + 22), "Um", fill=0, font=fonts["tiny"])
     draw.text((info_x + label_w, row_y + 22),
               f"{out_hum:.0f}%" if out_hum is not None else "--%", fill=0, font=fonts["tiny"])
-    draw.text((info_x, row_y + 35), "Ve", fill=0, font=fonts["tiny"])
-    draw.text((info_x + label_w, row_y + 35),
+    wind_x = info_x + 2
+    draw.text((wind_x, row_y + 35), "Ve", fill=0, font=fonts["tiny"])
+    draw.text((wind_x + label_w, row_y + 35),
               f"{wind:.0f} km/h" if wind is not None else "-- km/h", fill=0, font=fonts["tiny"])
 
     if uv is not None:
         uv_value = float(uv)
         if uv_value < 3:
-            uv_level = "L"
+            uv_level = "(low)"
         elif uv_value < 6:
-            uv_level = "M"
+            uv_level = "(medium)"
         else:
-            uv_level = "H"
+            uv_level = "(high)"
         uv_line = f"UV {uv_value:.1f} {uv_level}"
         uv_line = _fit_text(draw, uv_line, fonts["tiny"], split_x - info_x - 10)
         draw.text((info_x, row_y + 48), uv_line, fill=0, font=fonts["tiny"])
@@ -1123,8 +1191,7 @@ def send_to_epaper(
         if init_fn and disp_fn:
             init_fn()
             log.info(f"Clock refresh using partial mode ({init_name} + {disp_name})")
-            clock_rect_hw = _portrait_rect_to_hw(CLOCK_RECT_PORTRAIT)
-            if not _safe_partial_refresh(epd, disp_fn, buffer, rect=clock_rect_hw):
+            if not _safe_partial_refresh(epd, disp_fn, buffer, rect=None):
                 log.warning("Partial signature mismatch, using full refresh for clock mode")
                 epd.init()
                 epd.display(buffer)
@@ -1149,6 +1216,7 @@ def run_clock_daemon(
     cache_image: str,
     interval_sec: int,
     full_every: int,
+    data_every_min: int,
     partial_refresh: bool,
     partial_fullscreen: bool,
     demo: bool,
@@ -1156,6 +1224,7 @@ def run_clock_daemon(
     epd_driver = _load_epd_driver(epd_lib_path)
     epd = epd_driver.EPD()
     clock_rect_hw = _portrait_rect_to_hw(CLOCK_RECT_PORTRAIT)
+    body_rect_hw = _portrait_rect_to_hw(BODY_RECT_PORTRAIT)
     init_partial_fn, init_name = _first_callable(epd, ["init_part", "init_fast", "init_Fast", "init"])
     disp_partial_fn, disp_name = _first_callable(epd, ["displayPartial", "display_partial", "display_Partial"])
     partial_enabled = bool(partial_refresh and init_partial_fn and disp_partial_fn)
@@ -1164,37 +1233,41 @@ def run_clock_daemon(
     else:
         log.warning("Clock daemon running without partial refresh (set clock_partial_refresh=true)")
 
+    interval_sec = max(1, int(interval_sec))
+    full_every = max(1, int(full_every))
+    data_every_min = max(1, int(data_every_min))
+    data_every_ticks = max(1, int(round((data_every_min * 60) / interval_sec)))
+
     tick_count = 0
     img = load_cached_full_image(cache_image)
-    last_full_img = img.copy()
-    log.info("Clock daemon started")
+    try:
+        initial_data = demo_data() if demo else fetch_all_data()
+        img = render(initial_data, now=datetime.now())
+    except Exception as e:
+        log.warning(f"Initial render failed, using cached image: {e}")
+    last_frame_img = img.copy()
+    log.info(
+        f"Clock daemon started (clock every {interval_sec}s, data every {data_every_min}m, "
+        f"full every {full_every} ticks)"
+    )
     try:
         while True:
             now = datetime.now()
             do_full = tick_count == 0 or (tick_count % full_every == 0)
-            if demo:
-                data = demo_data()
-            else:
-                data = fetch_all_data()
+            do_data = tick_count == 0 or (tick_count % data_every_ticks == 0)
 
-            img = render(data, now=now)
+            if do_data:
+                data = demo_data() if demo else fetch_all_data()
+                img = render(data, now=now)
+            else:
+                img = last_frame_img.copy()
+                update_clock_header(img, now=now)
+
             if do_full:
                 try:
                     img.save(cache_image, "PNG")
                 except Exception as e:
                     log.warning(f"Failed to update cache image {cache_image}: {e}")
-                last_full_img = img.copy()
-            elif last_full_img is not None:
-                # Keep room names/icons and footer unchanged during partial ticks.
-                weather_data = data.get("weather", {})
-                has_forecast = bool(weather_data.get("forecast"))
-                dayparts = weather_data.get("dayparts", {}) if isinstance(weather_data, dict) else {}
-                has_intraday = any(dayparts.get(k) is not None for k in ("morning", "afternoon", "evening"))
-                rows_y = room_rows_start_y(has_forecast, has_intraday)
-                footer_y = H - 52
-                names_x1 = W - 150
-                img.paste(last_full_img.crop((0, rows_y, names_x1, footer_y)), (0, rows_y))
-                img.paste(last_full_img.crop((0, footer_y, W, H)), (0, footer_y))
             buffer = epd.getbuffer(img.rotate(90, expand=True))
 
             if do_full:
@@ -1202,8 +1275,14 @@ def run_clock_daemon(
                 epd.display(buffer)
             elif partial_enabled:
                 init_partial_fn()
-                partial_rect = None if partial_fullscreen else clock_rect_hw
-                if not _safe_partial_refresh(epd, disp_partial_fn, buffer, rect=partial_rect):
+                if do_data:
+                    body_rect = None if partial_fullscreen else body_rect_hw
+                    if not _safe_partial_refresh(epd, disp_partial_fn, buffer, rect=body_rect):
+                        log.warning("Data partial refresh failed, switching to full refresh")
+                        partial_enabled = False
+                        epd.init()
+                        epd.display(buffer)
+                elif not _safe_partial_refresh(epd, disp_partial_fn, buffer, rect=None):
                     log.warning("Clock daemon partial failed, switching to full refresh")
                     partial_enabled = False
                     epd.init()
@@ -1212,6 +1291,7 @@ def run_clock_daemon(
                 epd.init()
                 epd.display(buffer)
 
+            last_frame_img = img.copy()
             tick_count += 1
             now_ts = time.time()
             sleep_s = max(0.1, interval_sec - (now_ts % interval_sec))
@@ -1261,10 +1341,17 @@ def main():
         default=CLOCK_DAEMON_FULL_EVERY,
         help="Clock daemon force full refresh every N ticks",
     )
+    parser.add_argument(
+        "--clock-data-every-min",
+        type=int,
+        default=CLOCK_DAEMON_DATA_EVERY_MIN,
+        help="Clock daemon refresh non-clock data every N minutes",
+    )
     args = parser.parse_args()
     ICON_ASSETS = IconAssets(args.icons_dir)
     args.clock_interval_sec = max(1, int(args.clock_interval_sec))
     args.clock_full_every = max(1, int(args.clock_full_every))
+    args.clock_data_every_min = max(1, int(args.clock_data_every_min))
 
     if args.mode == "clock-daemon":
         run_clock_daemon(
@@ -1272,6 +1359,7 @@ def main():
             cache_image=args.cache_image,
             interval_sec=args.clock_interval_sec,
             full_every=args.clock_full_every,
+            data_every_min=args.clock_data_every_min,
             partial_refresh=args.clock_partial_refresh or bool(CLOCK_PARTIAL_REFRESH),
             partial_fullscreen=bool(CLOCK_PARTIAL_FULLSCREEN),
             demo=args.demo,
