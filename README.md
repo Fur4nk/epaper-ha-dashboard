@@ -145,6 +145,9 @@ Then enable:
 ```bash
 sudo install -m 644 systemd/epaper-dashboard.service /etc/systemd/system/epaper-dashboard.service
 sudo systemctl daemon-reload
+sudo systemctl disable --now epaper-dashboard.timer 2>/dev/null || true
+sudo systemctl disable --now epaper-dashboard-clock.timer 2>/dev/null || true
+sudo systemctl disable --now epaper-dashboard-clock.service 2>/dev/null || true
 sudo systemctl enable --now epaper-dashboard.service
 ```
 
