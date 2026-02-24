@@ -49,6 +49,10 @@ ROOMS          = _config["rooms"]
 WEATHER_ENTITY = _config["weather_entity"]
 OUTDOOR_TEMP   = _config.get("outdoor_temp", "")
 OUTDOOR_HUM    = _config.get("outdoor_hum", "")
+OUTDOOR_UV     = _config.get("outdoor_uv", "")
+OUTDOOR_AQI    = _config.get("outdoor_aqi", "")
+OUTDOOR_PM25   = _config.get("outdoor_pm25", "")
+SUN_ENTITY     = _config.get("sun_entity", "sun.sun")
 FOOTER_DAILY_QUOTE = _config.get("footer_daily_quote", True)
 FOOTER_QUOTE = _config.get("footer_quote", "")
 FOOTER_SOURCE = _config.get("footer_source", "")
@@ -459,9 +463,28 @@ def _extract_dayparts_from_hourly(hourly_forecast: list):
     return result
 
 
+def _to_float(v):
+    try:
+        return float(v)
+    except Exception:
+        return None
+
+
+def _fmt_next_sun_time(dt_str: str):
+    if not dt_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(dt_str).replace("Z", "+00:00"))
+        return dt.astimezone().strftime("%H:%M")
+    except Exception:
+        return None
+
+
 def ha_get_weather() -> dict:
     result = {"condition": "unknown", "temperature": None, "humidity": None,
-              "wind_speed": None, "forecast": [], "dayparts": {}}
+              "wind_speed": None, "uv_index": None, "aqi": None, "pm25": None,
+              "sunrise_time": None, "sunset_time": None,
+              "forecast": [], "dayparts": {}}
     if WEATHER_ENTITY:
         try:
             r = requests.post(f"{HA_URL}/api/services/weather/get_forecasts?return_response",
@@ -513,6 +536,9 @@ def ha_get_weather() -> dict:
             result["temperature"] = attrs.get("temperature")
             result["humidity"] = attrs.get("humidity")
             result["wind_speed"] = attrs.get("wind_speed")
+            result["uv_index"] = attrs.get("uv_index")
+            result["aqi"] = attrs.get("aqi")
+            result["pm25"] = attrs.get("pm25")
             if not result["forecast"]:
                 result["forecast"] = attrs.get("forecast", [])[:4]
         except Exception as e:
@@ -522,8 +548,24 @@ def ha_get_weather() -> dict:
 
     out_t = ha_get_state(OUTDOOR_TEMP)
     out_h = ha_get_state(OUTDOOR_HUM)
+    out_uv = ha_get_state(OUTDOOR_UV)
+    out_aqi = ha_get_state(OUTDOOR_AQI)
+    out_pm25 = ha_get_state(OUTDOOR_PM25)
     if out_t is not None: result["temperature"] = float(out_t)
     if out_h is not None: result["humidity"] = float(out_h)
+    if out_uv is not None: result["uv_index"] = _to_float(out_uv)
+    if out_aqi is not None: result["aqi"] = _to_float(out_aqi)
+    if out_pm25 is not None: result["pm25"] = _to_float(out_pm25)
+
+    try:
+        r = requests.get(f"{HA_URL}/api/states/{SUN_ENTITY}", headers=_ha_headers(), timeout=10)
+        r.raise_for_status()
+        sun = r.json()
+        attrs = sun.get("attributes", {})
+        result["sunrise_time"] = _fmt_next_sun_time(attrs.get("next_rising"))
+        result["sunset_time"] = _fmt_next_sun_time(attrs.get("next_setting"))
+    except Exception:
+        pass
     return result
 
 def fetch_all_data() -> dict:
@@ -795,6 +837,7 @@ def render(data: dict, now: datetime = None) -> Image.Image:
     out_temp = weather.get("temperature")
     out_hum = weather.get("humidity")
     wind = weather.get("wind_speed")
+    uv = weather.get("uv_index")
     dayparts = weather.get("dayparts", {}) if isinstance(weather, dict) else {}
 
     draw.text((16, y), "ESTERNO", fill=0, font=fonts["section"])
@@ -802,7 +845,7 @@ def render(data: dict, now: datetime = None) -> Image.Image:
 
     # Single-row layout: current (left) + intraday tiles (right)
     row_y = y
-    row_h = 62
+    row_h = 72
     cond_text = CONDITION_LABELS.get(cond, cond.replace("_", " ").title())
 
     left_x = 16
@@ -811,14 +854,26 @@ def render(data: dict, now: datetime = None) -> Image.Image:
     draw.text((left_x, row_y + 9), temp_text, fill=0, font=fonts["temp_outdoor"])
     info_x = left_x + 76
     cond_text = _fit_text(draw, cond_text, fonts["tiny"], split_x - info_x - 12)
-    draw.text((info_x, row_y + 10), cond_text, fill=0, font=fonts["tiny"])
+    draw.text((info_x, row_y + 8), cond_text, fill=0, font=fonts["tiny"])
     label_w = 18
-    draw.text((info_x, row_y + 24), "Um", fill=0, font=fonts["tiny"])
-    draw.text((info_x + label_w, row_y + 24),
+    draw.text((info_x, row_y + 22), "Um", fill=0, font=fonts["tiny"])
+    draw.text((info_x + label_w, row_y + 22),
               f"{out_hum:.0f}%" if out_hum is not None else "--%", fill=0, font=fonts["tiny"])
-    draw.text((info_x, row_y + 37), "Ve", fill=0, font=fonts["tiny"])
-    draw.text((info_x + label_w, row_y + 37),
+    draw.text((info_x, row_y + 35), "Ve", fill=0, font=fonts["tiny"])
+    draw.text((info_x + label_w, row_y + 35),
               f"{wind:.0f} km/h" if wind is not None else "-- km/h", fill=0, font=fonts["tiny"])
+
+    if uv is not None:
+        uv_value = float(uv)
+        if uv_value < 3:
+            uv_level = "L"
+        elif uv_value < 6:
+            uv_level = "M"
+        else:
+            uv_level = "H"
+        uv_line = f"UV {uv_value:.1f} {uv_level}"
+        uv_line = _fit_text(draw, uv_line, fonts["tiny"], split_x - info_x - 10)
+        draw.text((info_x, row_y + 48), uv_line, fill=0, font=fonts["tiny"])
 
     # Vertical separator only inside the outdoor row.
     # Keep top/bottom margins so it does not touch adjacent section lines.
@@ -947,7 +1002,7 @@ def room_rows_start_y(has_forecast: bool, has_intraday: bool) -> int:
     y = HEADER_H
     y += 10       # top gap after header
     y += 16       # "ESTERNO" label block
-    y += 62       # single-row current + intraday block
+    y += 72       # single-row current + intraday block (includes extra info line)
     if has_forecast:
         y += 2 + 10 + 60  # line gap + forecast top gap + forecast block
     y += 4 + 10   # separator and gap

@@ -59,6 +59,13 @@ Available room icons: `kitchen`, `livingroom`, `bedroom`, `childroom`, `bathroom
 Supported weather condition names (for icon assets):  
 `sunny`, `clear-night`, `partlycloudy`, `cloudy`, `rainy`, `pouring`, `snowy`, `snowy-rainy`, `fog`, `hail`, `lightning`, `lightning-rainy`, `windy`, `windy-variant`, `exceptional`
 
+Optional outdoor entities:
+
+- `outdoor_uv`
+- `outdoor_aqi`
+- `outdoor_pm25`
+- `sun_entity` (default: `sun.sun`)
+
 Optional footer quote fields:
 
 - `footer_daily_quote` (`true` = nuova frase ogni giorno da ZenQuotes)
