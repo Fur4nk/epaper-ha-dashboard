@@ -69,11 +69,8 @@ CLOCK_DAEMON_INTERVAL_SEC = int(_config.get("clock_daemon_interval_sec", 60))
 CLOCK_DAEMON_FULL_EVERY = int(_config.get("clock_daemon_full_every", 240))
 CLOCK_DAEMON_DATA_EVERY_MIN = int(_config.get("clock_daemon_data_every_min", 10))
 
-EPD_MODULE = "epd7in5_V2"
 W, H = 480, 800
 HEADER_H = 56
-# Portrait area that contains the clock text (top-right in UI coordinates).
-CLOCK_RECT_PORTRAIT = (300, 0, W, HEADER_H)
 BODY_RECT_PORTRAIT = (0, HEADER_H, W, H)
 
 FONT_DIR = "/usr/share/fonts/truetype/dejavu"
@@ -1066,17 +1063,6 @@ def render(data: dict, now: datetime = None) -> Image.Image:
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
 
-def room_rows_start_y(has_forecast: bool, has_intraday: bool) -> int:
-    y = HEADER_H
-    y += 10       # top gap after header
-    y += 16       # "ESTERNO" label block
-    y += 72       # single-row current + intraday block (includes extra info line)
-    if has_forecast:
-        y += 2 + 10 + 60  # line gap + forecast top gap + forecast block
-    y += 4 + 10   # separator and gap
-    y += 16 + 4   # rooms header and line gap
-    return y
-
 def _resolve_epd_lib_path(custom_path: str = ""):
     script_dir = os.path.dirname(os.path.abspath(__file__))
     env_path = os.environ.get("EPD_LIB_PATH", "")
@@ -1223,7 +1209,6 @@ def run_clock_daemon(
 ):
     epd_driver = _load_epd_driver(epd_lib_path)
     epd = epd_driver.EPD()
-    clock_rect_hw = _portrait_rect_to_hw(CLOCK_RECT_PORTRAIT)
     body_rect_hw = _portrait_rect_to_hw(BODY_RECT_PORTRAIT)
     init_partial_fn, init_name = _first_callable(epd, ["init_part", "init_fast", "init_Fast", "init"])
     disp_partial_fn, disp_name = _first_callable(epd, ["displayPartial", "display_partial", "display_Partial"])
