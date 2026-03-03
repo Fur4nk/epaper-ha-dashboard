@@ -90,6 +90,7 @@ Optional weekday label overrides:
 - `header_weekday_format` (`full` or `abbr`)
 - `header_month_format` (`full` or `abbr`)
 - `forecast_weekday_format` (`full` or `abbr`)
+- `show_clock` (`true` = show HH:MM in header, `false` = hide clock and show larger date in its place)
 - `clock_partial_refresh` (`true` enables partial updates in `clock-daemon`)
 - `clock_partial_fullscreen` (`true` = partial su schermo intero, comportamento più simile al demo Waveshare)
 - `clock_daemon_interval_sec` (default `60`)
@@ -148,7 +149,7 @@ python3 ha_epaper_dashboard.py --simulate --icons-dir /path/to/icons --output pr
 Recommended:
 
 - one long-running daemon service
-- every minute updates clock (partial, with local scrub)
+- every minute updates clock (only if `show_clock: true`)
 - every 10 minutes updates non-clock data
 - every N ticks (default 240) performs full refresh (4h with 60s tick)
 
