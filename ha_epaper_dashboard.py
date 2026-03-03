@@ -68,10 +68,10 @@ CLOCK_PARTIAL_FULLSCREEN = _config.get("clock_partial_fullscreen", True)
 CLOCK_DAEMON_INTERVAL_SEC = int(_config.get("clock_daemon_interval_sec", 60))
 CLOCK_DAEMON_FULL_EVERY = int(_config.get("clock_daemon_full_every", 240))
 CLOCK_DAEMON_DATA_EVERY_MIN = int(_config.get("clock_daemon_data_every_min", 10))
+SHOW_CLOCK = bool(_config.get("show_clock", True))
 
 W, H = 480, 800
 HEADER_H = 56
-BODY_RECT_PORTRAIT = (0, HEADER_H, W, H)
 
 FONT_DIR = "/usr/share/fonts/truetype/dejavu"
 DEFAULT_ICON_DIR = os.path.join(SCRIPT_DIR, "assets", "icons")
@@ -97,6 +97,7 @@ def load_fonts() -> dict:
             "title":       ImageFont.truetype(bold, 30),
             "time":        ImageFont.truetype(mono, 30),
             "date":        ImageFont.truetype(reg, 14),
+            "date_large":  ImageFont.truetype(bold, 18),
             "section":     ImageFont.truetype(bold, 13),
             "room_name":   ImageFont.truetype(bold, 19),
             "temp_outdoor": ImageFont.truetype(mono, 40),
@@ -112,7 +113,7 @@ def load_fonts() -> dict:
     except OSError:
         log.warning("DejaVu fonts not found, using default")
         d = ImageFont.load_default()
-        return {k: d for k in ["title","time","date","section","room_name","temp_outdoor","temp_big",
+        return {k: d for k in ["title","time","date","date_large","section","room_name","temp_outdoor","temp_big",
             "temp_room","hum_room","weather_sub","fc_day","fc_temp","tiny","col_hdr"]}
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
@@ -513,6 +514,18 @@ def _write_dayparts_cache(today_key: str, dayparts: dict):
         log.warning(f"Failed to write dayparts cache {DAYPARTS_CACHE_FILE}: {e}")
 
 
+def _merge_daypart_minmax(cached_entry, new_entry):
+    cached = _normalize_daypart_entry(cached_entry)
+    fresh = _normalize_daypart_entry(new_entry)
+    if cached and fresh:
+        return {
+            "min": min(cached["min"], fresh["min"]),
+            "max": max(cached["max"], fresh["max"]),
+            "condition": fresh.get("condition") or cached.get("condition") or "unknown",
+        }
+    return fresh or cached
+
+
 def _to_float(v):
     try:
         return float(v)
@@ -577,14 +590,15 @@ def ha_get_weather() -> dict:
                 result["dayparts"] = _extract_dayparts_from_hourly(hourly)
         except Exception:
             pass
-        # Keep morning/afternoon visible across the day when HA hourly response
-        # no longer includes those past time slots.
+        # Keep morning/afternoon visible across the day and accumulate min/max
+        # observed during each time window.
         today_key = datetime.now().strftime("%Y-%m-%d")
         cached_dayparts = _read_dayparts_cache(today_key)
         merged_dayparts = dict(result["dayparts"]) if isinstance(result["dayparts"], dict) else {}
         for key in ("morning", "afternoon"):
-            if key not in merged_dayparts and key in cached_dayparts:
-                merged_dayparts[key] = cached_dayparts[key]
+            merged_entry = _merge_daypart_minmax(cached_dayparts.get(key), merged_dayparts.get(key))
+            if merged_entry:
+                merged_dayparts[key] = merged_entry
         if merged_dayparts:
             _write_dayparts_cache(today_key, merged_dayparts)
             result["dayparts"] = merged_dayparts
@@ -788,13 +802,17 @@ def draw_header(draw: ImageDraw.ImageDraw, fonts: dict, now: datetime):
     # Light header to reduce ghosting on frequently updated area.
     draw.rectangle([(0, 0), (W, HEADER_H)], fill=255)
     draw.text((16, 8), "CASA", fill=0, font=fonts["title"])
-    draw.text((W-16, 8), now.strftime("%H:%M"), fill=0, font=fonts["time"], anchor="ra")
     weekday_labels = WEEKDAYS_FULL if HEADER_WEEKDAY_FORMAT == "full" else WEEKDAYS_ABBR
     month_labels = MONTHS_FULL if HEADER_MONTH_FORMAT == "full" else MONTHS_ABBR
     day_name = weekday_labels[now.weekday()]
     month_name = month_labels[now.month - 1]
-    draw.text((16, 36), f"{day_name} {now.day} {month_name} {now.year}",
-              fill=0, font=fonts["date"])
+    date_text = f"{day_name} {now.day} {month_name} {now.year}"
+    if SHOW_CLOCK:
+        draw.text((W-16, 8), now.strftime("%H:%M"), fill=0, font=fonts["time"], anchor="ra")
+        draw.text((16, 36), date_text, fill=0, font=fonts["date"])
+    else:
+        date_upper = _fit_text(draw, date_text.upper(), fonts["date_large"], W - 140)
+        draw.text((W-16, 16), date_upper, fill=0, font=fonts["date_large"], anchor="ra")
     # Strong visual separation between header and weather area.
     draw.rectangle([(0, HEADER_H - 3), (W, HEADER_H - 1)], fill=0)
 
@@ -844,8 +862,16 @@ def _text_size(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont):
     return r - l, b - t
 
 
-def draw_footer(draw: ImageDraw.ImageDraw, fonts: dict, now: datetime):
+def draw_footer(
+    draw: ImageDraw.ImageDraw,
+    fonts: dict,
+    now: datetime,
+    last_updated: datetime = None,
+):
     footer_top = H - 50
+    if last_updated is not None:
+        stamp = f"Last updated {last_updated.strftime('%H:%M')}"
+        draw.text((W - 16, footer_top - 14), stamp, fill=0, font=fonts["tiny"], anchor="ra")
     draw.line([(16, footer_top), (W - 16, footer_top)], fill=0, width=1)
     quote_raw, source_raw = footer_text(now)
     quote_font = fonts["weather_sub"]
@@ -884,7 +910,7 @@ def load_cached_full_image(cache_image: str) -> Image.Image:
     return img
 
 
-def render(data: dict, now: datetime = None) -> Image.Image:
+def render(data: dict, now: datetime = None, last_updated: datetime = None) -> Image.Image:
     img = Image.new("1", (W, H), 255)
     draw = ImageDraw.Draw(img)
     fonts = load_fonts()
@@ -1054,7 +1080,7 @@ def render(data: dict, now: datetime = None) -> Image.Image:
         draw.line([(16, ry+row_h-1), (W-16, ry+row_h-1)], fill=200, width=1)
 
     y = y + len(rooms) * row_h
-    draw_footer(draw, fonts, now)
+    draw_footer(draw, fonts, now, last_updated=last_updated)
 
     return img
 
@@ -1110,16 +1136,6 @@ def _first_callable(obj, names):
     return None, None
 
 
-def _portrait_rect_to_hw(rect):
-    x0, y0, x1, y1 = rect
-    # PIL rotate(90, expand=True): (x, y) -> (y, W - 1 - x)
-    hx0 = int(y0)
-    hx1 = int(y1)
-    hy0 = int(W - x1)
-    hy1 = int(W - x0)
-    return hx0, hy0, hx1, hy1
-
-
 def _align_rect_for_epd(rect, width, height):
     x0, y0, x1, y1 = rect
     x0 = max(0, min(width - 1, x0))
@@ -1157,6 +1173,154 @@ def _safe_partial_refresh(epd, disp_fn, buffer, rect=None):
     except TypeError:
         return False
     return False
+
+
+def _partial_refresh_rects(epd, disp_fn, buffer, rects):
+    for rect in rects:
+        if not _safe_partial_refresh(epd, disp_fn, buffer, rect=rect):
+            return False
+    return True
+
+
+def _room_status_key(temp_v, hum_v):
+    t = _to_float(temp_v)
+    h = _to_float(hum_v)
+    if t is None or h is None:
+        return "na"
+    if h > 65:
+        return "high_hum"
+    if t > 24 or t < 18:
+        return "temp_alert"
+    return "ok"
+
+
+def _data_snapshot(data: dict):
+    weather = data.get("weather", {}) if isinstance(data, dict) else {}
+    dayparts = weather.get("dayparts", {}) if isinstance(weather, dict) else {}
+    forecast = weather.get("forecast", []) if isinstance(weather, dict) else []
+    rooms = data.get("rooms", []) if isinstance(data, dict) else []
+
+    outdoor = (
+        round(_to_float(weather.get("temperature")) or 0.0, 1),
+        round(_to_float(weather.get("humidity")) or 0.0, 0),
+        round(_to_float(weather.get("wind_speed")) or 0.0, 0),
+        round(_to_float(weather.get("uv_index")) or 0.0, 1),
+        str(weather.get("condition", "unknown")),
+    )
+
+    intraday = []
+    for key in ("morning", "afternoon", "evening"):
+        entry = dayparts.get(key, {}) if isinstance(dayparts, dict) else {}
+        intraday.append(
+            (
+                key,
+                str(entry.get("condition", "unknown")),
+                round(_to_float(entry.get("min")) or 0.0, 1),
+                round(_to_float(entry.get("max")) or 0.0, 1),
+            )
+        )
+
+    fc = []
+    for item in forecast[:4]:
+        if not isinstance(item, dict):
+            continue
+        fc.append(
+            (
+                str(item.get("datetime", "")),
+                str(item.get("condition", "unknown")),
+                round(_to_float(item.get("temperature")) or 0.0, 1),
+                round(_to_float(item.get("templow")) or 0.0, 1),
+            )
+        )
+
+    room_values = []
+    for room in rooms:
+        if not isinstance(room, dict):
+            continue
+        t = round(_to_float(room.get("temp")) or 0.0, 1)
+        h = round(_to_float(room.get("hum")) or 0.0, 0)
+        status = _room_status_key(room.get("temp"), room.get("hum"))
+        room_values.append((t, h, status))
+
+    return {"outdoor": outdoor, "intraday": tuple(intraday), "forecast": tuple(fc), "rooms": tuple(room_values)}
+
+
+def _diff_snapshot(prev_snap, curr_snap):
+    if prev_snap is None:
+        return {"outdoor": True, "intraday": True, "forecast": True, "rooms": None, "footer": True}
+
+    room_changes = set()
+    prev_rooms = list(prev_snap.get("rooms", ()))
+    curr_rooms = list(curr_snap.get("rooms", ()))
+    max_rows = max(len(prev_rooms), len(curr_rooms))
+    for idx in range(max_rows):
+        if idx >= len(prev_rooms) or idx >= len(curr_rooms) or prev_rooms[idx] != curr_rooms[idx]:
+            room_changes.add(idx)
+
+    return {
+        "outdoor": prev_snap.get("outdoor") != curr_snap.get("outdoor"),
+        "intraday": prev_snap.get("intraday") != curr_snap.get("intraday"),
+        "forecast": prev_snap.get("forecast") != curr_snap.get("forecast"),
+        "rooms": room_changes,
+        "footer": True,
+    }
+
+
+def _dynamic_partial_rects(data: dict, changed: dict = None):
+    rects = []
+    y = HEADER_H
+    y += 10
+    y += 16
+    row_y = y
+    row_h = 72
+
+    # Outdoor current temperature + info block.
+    if changed is None or changed.get("outdoor"):
+        rects.append((12, row_y, 190, row_y + row_h))
+    # Intraday: icons + temperatures only (skip labels at top).
+    if changed is None or changed.get("intraday"):
+        rects.append((190, row_y + 18, W, row_y + row_h))
+    y += row_h
+
+    weather = data.get("weather", {}) if isinstance(data, dict) else {}
+    forecast = weather.get("forecast", []) if isinstance(weather, dict) else []
+    if forecast:
+        y += 2
+        y += 10
+        fc_top = y
+        # Forecast icons + temperatures only (skip weekday labels).
+        if changed is None or changed.get("forecast"):
+            rects.append((8, fc_top + 20, W - 8, fc_top + 64))
+        y += 64
+
+    y += 4
+    y += 10
+    y += 16
+    y += 4
+    rooms_y = y
+    rooms = data.get("rooms", []) if isinstance(data, dict) else []
+    if rooms:
+        available = H - rooms_y - 30
+        row_h = min(available // len(rooms), 54)
+        room_changes = None if changed is None else changed.get("rooms")
+        if room_changes is None:
+            rooms_bottom = rooms_y + len(rooms) * row_h
+            # Room temperature/humidity/status columns only.
+            rects.append((W - 144, rooms_y, W, rooms_bottom))
+        else:
+            for idx in sorted(room_changes):
+                if idx < 0 or idx >= len(rooms):
+                    continue
+                y0 = rooms_y + idx * row_h
+                y1 = y0 + row_h
+                rects.append((W - 144, y0, W, y1))
+
+    # Footer "Last updated" line above quote separator.
+    footer_top = H - 50
+    if changed is None or changed.get("footer"):
+        rects.append((W - 220, footer_top - 18, W - 12, footer_top - 2))
+
+    return rects
 
 
 def send_to_epaper(
@@ -1209,7 +1373,6 @@ def run_clock_daemon(
 ):
     epd_driver = _load_epd_driver(epd_lib_path)
     epd = epd_driver.EPD()
-    body_rect_hw = _portrait_rect_to_hw(BODY_RECT_PORTRAIT)
     init_partial_fn, init_name = _first_callable(epd, ["init_part", "init_fast", "init_Fast", "init"])
     disp_partial_fn, disp_name = _first_callable(epd, ["displayPartial", "display_partial", "display_Partial"])
     partial_enabled = bool(partial_refresh and init_partial_fn and disp_partial_fn)
@@ -1224,26 +1387,56 @@ def run_clock_daemon(
     data_every_ticks = max(1, int(round((data_every_min * 60) / interval_sec)))
 
     tick_count = 0
+    display_tick_count = 0
+    last_data_snapshot = None
     img = load_cached_full_image(cache_image)
     try:
         initial_data = demo_data() if demo else fetch_all_data()
-        img = render(initial_data, now=datetime.now())
+        init_now = datetime.now()
+        img = render(initial_data, now=init_now, last_updated=init_now)
+        last_data_snapshot = _data_snapshot(initial_data)
     except Exception as e:
         log.warning(f"Initial render failed, using cached image: {e}")
     last_frame_img = img.copy()
-    log.info(
-        f"Clock daemon started (clock every {interval_sec}s, data every {data_every_min}m, "
-        f"full every {full_every} ticks)"
-    )
+    if SHOW_CLOCK:
+        log.info(
+            f"Clock daemon started (clock every {interval_sec}s, data every {data_every_min}m, "
+            f"full every {full_every} ticks)"
+        )
+    else:
+        log.info(
+            f"Clock disabled in config: refreshing data every {data_every_min}m "
+            f"(full every {full_every} display ticks)"
+        )
     try:
         while True:
             now = datetime.now()
-            do_full = tick_count == 0 or (tick_count % full_every == 0)
             do_data = tick_count == 0 or (tick_count % data_every_ticks == 0)
+            do_clock_tick = bool(SHOW_CLOCK and not do_data)
+
+            if not do_data and not do_clock_tick:
+                tick_count += 1
+                now_ts = time.time()
+                sleep_s = max(0.1, interval_sec - (now_ts % interval_sec))
+                time.sleep(sleep_s)
+                continue
+
+            do_full = display_tick_count == 0 or (display_tick_count % full_every == 0)
 
             if do_data:
                 data = demo_data() if demo else fetch_all_data()
-                img = render(data, now=now)
+                new_img = render(data, now=now, last_updated=now)
+                curr_snapshot = _data_snapshot(data)
+                changed = _diff_snapshot(last_data_snapshot, curr_snapshot)
+                data_rects = _dynamic_partial_rects(data, changed=changed)
+                if do_full or last_frame_img is None:
+                    img = new_img
+                else:
+                    img = last_frame_img.copy()
+                    for rect in data_rects:
+                        x0, y0, x1, y1 = rect
+                        img.paste(new_img.crop((x0, y0, x1, y1)), (x0, y0))
+                last_data_snapshot = curr_snapshot
             else:
                 img = last_frame_img.copy()
                 update_clock_header(img, now=now)
@@ -1261,8 +1454,11 @@ def run_clock_daemon(
             elif partial_enabled:
                 init_partial_fn()
                 if do_data:
-                    body_rect = None if partial_fullscreen else body_rect_hw
-                    if not _safe_partial_refresh(epd, disp_partial_fn, buffer, rect=body_rect):
+                    if partial_fullscreen:
+                        partial_ok = _safe_partial_refresh(epd, disp_partial_fn, buffer, rect=None)
+                    else:
+                        partial_ok = _partial_refresh_rects(epd, disp_partial_fn, buffer, data_rects)
+                    if not partial_ok:
                         log.warning("Data partial refresh failed, switching to full refresh")
                         partial_enabled = False
                         epd.init()
@@ -1277,6 +1473,7 @@ def run_clock_daemon(
                 epd.display(buffer)
 
             last_frame_img = img.copy()
+            display_tick_count += 1
             tick_count += 1
             now_ts = time.time()
             sleep_s = max(0.1, interval_sec - (now_ts % interval_sec))
@@ -1364,7 +1561,8 @@ def main():
             data = fetch_all_data()
 
         log.info("Rendering...")
-        img = render(data)
+        now = datetime.now()
+        img = render(data, now=now, last_updated=now)
         try:
             img.save(args.cache_image, "PNG")
         except Exception as e:
