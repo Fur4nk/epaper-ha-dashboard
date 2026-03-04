@@ -23,6 +23,8 @@ import requests
 from datetime import datetime
 
 from PIL import Image, ImageDraw, ImageFont
+from dashboard_i18n import DEFAULT_I18N, load_i18n_bundle
+from dashboard_partial import build_data_snapshot, build_dynamic_partial_rects, diff_snapshots
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  CONFIG — loaded from external files                                     ║
@@ -684,90 +686,15 @@ def demo_data() -> dict:
 # ║  RENDERER                                                                ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
-_DEFAULT_I18N = {
-    "weekdays_abbr": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    "weekdays_full": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
-    "months_abbr": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-    "months_full": [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December",
-    ],
-    "intraday_labels": ["Morning", "Afternoon", "Evening"],
-    "condition_labels": {
-        "sunny": "Sunny", "clear-night": "Clear", "partlycloudy": "Partly cloudy",
-        "cloudy": "Cloudy", "rainy": "Rain", "pouring": "Heavy rain",
-        "snowy": "Snow", "snowy-rainy": "Sleet", "fog": "Fog",
-        "hail": "Hail", "lightning": "Storm", "lightning-rainy": "Storm",
-        "windy": "Windy", "windy-variant": "Windy", "exceptional": "Exceptional",
-    },
-    "labels": {
-        "last_updated": "Last updated",
-        "outdoor": "OUTDOOR",
-        "rooms": "ROOMS",
-        "temp": "TEMP",
-        "hum": "HUM",
-        "humidity_short": "Hu",
-        "wind_short": "Wi",
-    },
-    "fallback_quote": {
-        "text": "It always seems impossible until it is done.",
-        "author": "Nelson Mandela",
-    },
-}
-
-
-def _load_i18n_dict(locale: str) -> dict:
-    out = dict(_DEFAULT_I18N)
-    lang_path = os.path.join(I18N_DIR, f"{locale}.json")
-    try:
-        with open(lang_path) as f:
-            loaded = json.load(f)
-        if isinstance(loaded, dict):
-            for key, value in loaded.items():
-                if isinstance(value, dict) and isinstance(out.get(key), dict):
-                    merged = dict(out[key])
-                    merged.update(value)
-                    out[key] = merged
-                else:
-                    out[key] = value
-    except Exception as e:
-        log.warning(f"Failed to load locale '{locale}' from {lang_path}: {e}. Using defaults.")
-    return out
-
-
-_I18N = _load_i18n_dict(LOCALE)
-WEEKDAYS_ABBR = _I18N.get("weekdays_abbr", _DEFAULT_I18N["weekdays_abbr"])
-WEEKDAYS_FULL = _I18N.get("weekdays_full", _DEFAULT_I18N["weekdays_full"])
-MONTHS_ABBR = _I18N.get("months_abbr", _DEFAULT_I18N["months_abbr"])
-MONTHS_FULL = _I18N.get("months_full", _DEFAULT_I18N["months_full"])
-INTRADAY_LABELS = _I18N.get("intraday_labels", _DEFAULT_I18N["intraday_labels"])
-CONDITION_LABELS = _I18N.get("condition_labels", _DEFAULT_I18N["condition_labels"])
-LABELS = _I18N.get("labels", _DEFAULT_I18N["labels"])
-_FALLBACK_QUOTE_I18N = _I18N.get("fallback_quote", _DEFAULT_I18N["fallback_quote"])
-
-if not isinstance(WEEKDAYS_ABBR, list) or len(WEEKDAYS_ABBR) != 7:
-    log.warning("Invalid i18n weekdays_abbr, using defaults")
-    WEEKDAYS_ABBR = _DEFAULT_I18N["weekdays_abbr"]
-if not isinstance(WEEKDAYS_FULL, list) or len(WEEKDAYS_FULL) != 7:
-    log.warning("Invalid i18n weekdays_full, using defaults")
-    WEEKDAYS_FULL = _DEFAULT_I18N["weekdays_full"]
-if not isinstance(MONTHS_ABBR, list) or len(MONTHS_ABBR) != 12:
-    log.warning("Invalid i18n months_abbr, using defaults")
-    MONTHS_ABBR = _DEFAULT_I18N["months_abbr"]
-if not isinstance(MONTHS_FULL, list) or len(MONTHS_FULL) != 12:
-    log.warning("Invalid i18n months_full, using defaults")
-    MONTHS_FULL = _DEFAULT_I18N["months_full"]
-if not isinstance(INTRADAY_LABELS, list) or len(INTRADAY_LABELS) != 3:
-    log.warning("Invalid i18n intraday_labels, using defaults")
-    INTRADAY_LABELS = _DEFAULT_I18N["intraday_labels"]
-if not isinstance(CONDITION_LABELS, dict):
-    log.warning("Invalid i18n condition_labels, using defaults")
-    CONDITION_LABELS = _DEFAULT_I18N["condition_labels"]
-if not isinstance(LABELS, dict):
-    log.warning("Invalid i18n labels, using defaults")
-    LABELS = _DEFAULT_I18N["labels"]
-if not isinstance(_FALLBACK_QUOTE_I18N, dict):
-    _FALLBACK_QUOTE_I18N = _DEFAULT_I18N["fallback_quote"]
+_I18N = load_i18n_bundle(LOCALE, I18N_DIR, log)
+WEEKDAYS_ABBR = _I18N["weekdays_abbr"]
+WEEKDAYS_FULL = _I18N["weekdays_full"]
+MONTHS_ABBR = _I18N["months_abbr"]
+MONTHS_FULL = _I18N["months_full"]
+INTRADAY_LABELS = _I18N["intraday_labels"]
+CONDITION_LABELS = _I18N["condition_labels"]
+LABELS = _I18N["labels"]
+_FALLBACK_QUOTE_I18N = _I18N["fallback_quote"]
 
 if HEADER_WEEKDAY_FORMAT not in ("full", "abbr"):
     log.warning("Invalid header_weekday_format in config.json, using 'full'")
@@ -783,8 +710,8 @@ if not isinstance(INTRADAY_LABELS, list) or len(INTRADAY_LABELS) != 3:
     INTRADAY_LABELS = ["Morning", "Afternoon", "Evening"]
 
 FALLBACK_QUOTE = (
-    str(_FALLBACK_QUOTE_I18N.get("text", _DEFAULT_I18N["fallback_quote"]["text"])),
-    str(_FALLBACK_QUOTE_I18N.get("author", _DEFAULT_I18N["fallback_quote"]["author"])),
+    str(_FALLBACK_QUOTE_I18N.get("text", DEFAULT_I18N["fallback_quote"]["text"])),
+    str(_FALLBACK_QUOTE_I18N.get("author", DEFAULT_I18N["fallback_quote"]["author"])),
 )
 
 
@@ -1235,147 +1162,6 @@ def _partial_refresh_rects(epd, disp_fn, buffer, rects):
     return True
 
 
-def _room_status_key(temp_v, hum_v):
-    t = _to_float(temp_v)
-    h = _to_float(hum_v)
-    if t is None or h is None:
-        return "na"
-    if h > 65:
-        return "high_hum"
-    if t > 24 or t < 18:
-        return "temp_alert"
-    return "ok"
-
-
-def _data_snapshot(data: dict):
-    weather = data.get("weather", {}) if isinstance(data, dict) else {}
-    dayparts = weather.get("dayparts", {}) if isinstance(weather, dict) else {}
-    forecast = weather.get("forecast", []) if isinstance(weather, dict) else []
-    rooms = data.get("rooms", []) if isinstance(data, dict) else []
-
-    outdoor = (
-        round(_to_float(weather.get("temperature")) or 0.0, 1),
-        round(_to_float(weather.get("humidity")) or 0.0, 0),
-        round(_to_float(weather.get("wind_speed")) or 0.0, 0),
-        round(_to_float(weather.get("uv_index")) or 0.0, 1),
-        str(weather.get("condition", "unknown")),
-    )
-
-    intraday = []
-    for key in ("morning", "afternoon", "evening"):
-        entry = dayparts.get(key, {}) if isinstance(dayparts, dict) else {}
-        intraday.append(
-            (
-                key,
-                str(entry.get("condition", "unknown")),
-                round(_to_float(entry.get("min")) or 0.0, 1),
-                round(_to_float(entry.get("max")) or 0.0, 1),
-            )
-        )
-
-    fc = []
-    for item in forecast[:4]:
-        if not isinstance(item, dict):
-            continue
-        fc.append(
-            (
-                str(item.get("datetime", "")),
-                str(item.get("condition", "unknown")),
-                round(_to_float(item.get("temperature")) or 0.0, 1),
-                round(_to_float(item.get("templow")) or 0.0, 1),
-            )
-        )
-
-    room_values = []
-    for room in rooms:
-        if not isinstance(room, dict):
-            continue
-        t = round(_to_float(room.get("temp")) or 0.0, 1)
-        h = round(_to_float(room.get("hum")) or 0.0, 0)
-        status = _room_status_key(room.get("temp"), room.get("hum"))
-        room_values.append((t, h, status))
-
-    return {"outdoor": outdoor, "intraday": tuple(intraday), "forecast": tuple(fc), "rooms": tuple(room_values)}
-
-
-def _diff_snapshot(prev_snap, curr_snap):
-    if prev_snap is None:
-        return {"outdoor": True, "intraday": True, "forecast": True, "rooms": None, "footer": True}
-
-    room_changes = set()
-    prev_rooms = list(prev_snap.get("rooms", ()))
-    curr_rooms = list(curr_snap.get("rooms", ()))
-    max_rows = max(len(prev_rooms), len(curr_rooms))
-    for idx in range(max_rows):
-        if idx >= len(prev_rooms) or idx >= len(curr_rooms) or prev_rooms[idx] != curr_rooms[idx]:
-            room_changes.add(idx)
-
-    return {
-        "outdoor": prev_snap.get("outdoor") != curr_snap.get("outdoor"),
-        "intraday": prev_snap.get("intraday") != curr_snap.get("intraday"),
-        "forecast": prev_snap.get("forecast") != curr_snap.get("forecast"),
-        "rooms": room_changes,
-        "footer": True,
-    }
-
-
-def _dynamic_partial_rects(data: dict, changed: dict = None):
-    rects = []
-    y = HEADER_H
-    y += 10
-    y += 16
-    row_y = y
-    row_h = 72
-
-    # Outdoor current temperature + info block.
-    if changed is None or changed.get("outdoor"):
-        rects.append((12, row_y, 190, row_y + row_h))
-    # Intraday: icons + temperatures only (skip labels at top).
-    if changed is None or changed.get("intraday"):
-        rects.append((190, row_y + 18, W, row_y + row_h))
-    y += row_h
-
-    weather = data.get("weather", {}) if isinstance(data, dict) else {}
-    forecast = weather.get("forecast", []) if isinstance(weather, dict) else []
-    if forecast:
-        y += 2
-        y += 10
-        fc_top = y
-        # Forecast icons + temperatures only (skip weekday labels).
-        if changed is None or changed.get("forecast"):
-            rects.append((8, fc_top + 20, W - 8, fc_top + 64))
-        y += 64
-
-    y += 4
-    y += 10
-    y += 16
-    y += 4
-    rooms_y = y
-    rooms = data.get("rooms", []) if isinstance(data, dict) else []
-    if rooms:
-        available = H - rooms_y - 30
-        row_h = min(available // len(rooms), 54)
-        room_changes = None if changed is None else changed.get("rooms")
-        if room_changes is None:
-            rooms_bottom = rooms_y + len(rooms) * row_h
-            # Room temperature/humidity/status columns only.
-            rects.append((W - 144, rooms_y, W, rooms_bottom))
-        else:
-            for idx in sorted(room_changes):
-                if idx < 0 or idx >= len(rooms):
-                    continue
-                y0 = rooms_y + idx * row_h
-                y1 = y0 + row_h
-                rects.append((W - 144, y0, W, y1))
-
-    # Footer "Last updated" line above quote separator.
-    footer_top = H - 50
-    if changed is None or changed.get("footer"):
-        rects.append((W - 220, footer_top - 18, W - 12, footer_top - 2))
-
-    return rects
-
-
 def send_to_epaper(
     img: Image.Image,
     epd_lib_path: str = "",
@@ -1447,7 +1233,7 @@ def run_clock_daemon(
         initial_data = demo_data() if demo else fetch_all_data()
         init_now = datetime.now()
         img = render(initial_data, now=init_now, last_updated=init_now)
-        last_data_snapshot = _data_snapshot(initial_data)
+        last_data_snapshot = build_data_snapshot(initial_data, _to_float)
     except Exception as e:
         log.warning(f"Initial render failed, using cached image: {e}")
     last_frame_img = img.copy()
@@ -1492,9 +1278,9 @@ def run_clock_daemon(
             if do_data:
                 data = demo_data() if demo else fetch_all_data()
                 new_img = render(data, now=now, last_updated=now)
-                curr_snapshot = _data_snapshot(data)
-                changed = _diff_snapshot(last_data_snapshot, curr_snapshot)
-                data_rects = _dynamic_partial_rects(data, changed=changed)
+                curr_snapshot = build_data_snapshot(data, _to_float)
+                changed = diff_snapshots(last_data_snapshot, curr_snapshot)
+                data_rects = build_dynamic_partial_rects(data, HEADER_H, W, H, changed=changed)
                 if do_full or last_frame_img is None:
                     img = new_img
                 else:
