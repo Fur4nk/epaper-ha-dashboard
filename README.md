@@ -87,6 +87,7 @@ Optional weekday label overrides:
 - `months_full` (12 entries for header date)
 - `months_abbr` (12 entries for header date)
 - `intraday_labels` (3 entries, default `["Morning", "Afternoon", "Evening"]`)
+- `header_title` (header label, default `"HOUSE"`)
 - `header_weekday_format` (`full` or `abbr`)
 - `header_month_format` (`full` or `abbr`)
 - `forecast_weekday_format` (`full` or `abbr`)

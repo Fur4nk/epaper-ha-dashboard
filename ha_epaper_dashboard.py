@@ -63,6 +63,7 @@ HEADER_WEEKDAY_FORMAT = _config.get("header_weekday_format", "full")
 HEADER_MONTH_FORMAT = _config.get("header_month_format", "full")
 FORECAST_WEEKDAY_FORMAT = _config.get("forecast_weekday_format", "abbr")
 INTRADAY_LABELS = _config.get("intraday_labels", ["Morning", "Afternoon", "Evening"])
+HEADER_TITLE = str(_config.get("header_title", "HOUSE")).strip() or "HOUSE"
 CLOCK_PARTIAL_REFRESH = _config.get("clock_partial_refresh", True)
 CLOCK_PARTIAL_FULLSCREEN = _config.get("clock_partial_fullscreen", True)
 CLOCK_DAEMON_INTERVAL_SEC = int(_config.get("clock_daemon_interval_sec", 60))
@@ -97,7 +98,7 @@ def load_fonts() -> dict:
             "title":       ImageFont.truetype(bold, 30),
             "time":        ImageFont.truetype(mono, 30),
             "date":        ImageFont.truetype(reg, 14),
-            "date_large":  ImageFont.truetype(bold, 18),
+            "date_large":  ImageFont.truetype(bold, 16),
             "section":     ImageFont.truetype(bold, 13),
             "room_name":   ImageFont.truetype(bold, 19),
             "temp_outdoor": ImageFont.truetype(mono, 40),
@@ -801,7 +802,8 @@ def footer_text(now: datetime):
 def draw_header(draw: ImageDraw.ImageDraw, fonts: dict, now: datetime):
     # Light header to reduce ghosting on frequently updated area.
     draw.rectangle([(0, 0), (W, HEADER_H)], fill=255)
-    draw.text((16, 8), "CASA", fill=0, font=fonts["title"])
+    title_text = HEADER_TITLE.upper()
+    draw.text((16, 8), title_text, fill=0, font=fonts["title"])
     weekday_labels = WEEKDAYS_FULL if HEADER_WEEKDAY_FORMAT == "full" else WEEKDAYS_ABBR
     month_labels = MONTHS_FULL if HEADER_MONTH_FORMAT == "full" else MONTHS_ABBR
     day_name = weekday_labels[now.weekday()]
@@ -811,8 +813,13 @@ def draw_header(draw: ImageDraw.ImageDraw, fonts: dict, now: datetime):
         draw.text((W-16, 8), now.strftime("%H:%M"), fill=0, font=fonts["time"], anchor="ra")
         draw.text((16, 36), date_text, fill=0, font=fonts["date"])
     else:
-        date_upper = _fit_text(draw, date_text.upper(), fonts["date_large"], W - 140)
-        draw.text((W-16, 16), date_upper, fill=0, font=fonts["date_large"], anchor="ra")
+        title_w = int(draw.textlength(title_text, font=fonts["title"]))
+        date_max_w = max(80, W - 16 - (16 + title_w + 24))
+        date_upper = _fit_text(draw, date_text.upper(), fonts["date_large"], date_max_w)
+        title_h = _text_size(draw, title_text, fonts["title"])[1]
+        date_h = _text_size(draw, date_upper, fonts["date_large"])[1]
+        date_y = 12 + max(0, title_h - date_h)
+        draw.text((W-16, date_y), date_upper, fill=0, font=fonts["date_large"], anchor="ra")
     # Strong visual separation between header and weather area.
     draw.rectangle([(0, HEADER_H - 3), (W, HEADER_H - 1)], fill=0)
 
@@ -1408,6 +1415,19 @@ def run_clock_daemon(
             f"Clock disabled in config: refreshing data every {data_every_min}m "
             f"(full every {full_every} display ticks)"
         )
+
+    # Force an immediate full draw at startup so date and Last updated are fresh.
+    try:
+        img.save(cache_image, "PNG")
+    except Exception as e:
+        log.warning(f"Failed to update cache image {cache_image}: {e}")
+    startup_buffer = epd.getbuffer(img.rotate(90, expand=True))
+    epd.init()
+    epd.display(startup_buffer)
+    last_frame_img = img.copy()
+    display_tick_count = 1
+    tick_count = 1
+
     try:
         while True:
             now = datetime.now()
