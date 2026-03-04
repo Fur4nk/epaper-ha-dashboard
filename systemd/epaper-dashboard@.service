@@ -1,0 +1,27 @@
+[Unit]
+Description=Home Assistant e-Paper Dashboard daemon (%i)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=%i
+Environment=APP_DIR=%h/src/epaper-ha-dashboard
+Environment=EPD_LIB_PATH=%h/src/e-Paper/RaspberryPi_JetsonNano/python/lib
+Environment=MODE=clock-daemon
+Environment=EXTRA_ARGS=
+EnvironmentFile=-/etc/default/epaper-dashboard
+WorkingDirectory=%h
+ExecStart=/usr/bin/python3 ${APP_DIR}/ha_epaper_dashboard.py --mode ${MODE} --epd-lib-path ${EPD_LIB_PATH} ${EXTRA_ARGS}
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=epaper-dashboard
+NoNewPrivileges=false
+ProtectSystem=strict
+ReadWritePaths=/tmp
+SupplementaryGroups=spi gpio
+
+[Install]
+WantedBy=multi-user.target

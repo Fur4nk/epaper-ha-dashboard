@@ -154,25 +154,39 @@ Recommended:
 - every 10 minutes updates non-clock data
 - every N ticks (default 240) performs full refresh (4h with 60s tick)
 
-Prebuilt unit files are provided in `systemd/` for user `dash` and path `/home/dash/src`.
+Prebuilt unit template is provided in `systemd/` and works for any Linux user.
+Default paths are based on the selected user's home:
+
+- app dir: `%h/src/epaper-ha-dashboard`
+- Waveshare lib: `%h/src/e-Paper/RaspberryPi_JetsonNano/python/lib`
+
+Optional overrides can be set in `/etc/default/epaper-dashboard`:
+
+```bash
+APP_DIR=/custom/path/epaper-ha-dashboard
+EPD_LIB_PATH=/custom/path/e-Paper/RaspberryPi_JetsonNano/python/lib
+MODE=clock-daemon
+EXTRA_ARGS=--clock-data-every-min 10 --clock-full-every 240
+```
 
 Then enable:
 
 ```bash
-sudo install -m 644 systemd/epaper-dashboard.service /etc/systemd/system/epaper-dashboard.service
+sudo install -m 644 systemd/epaper-dashboard@.service /etc/systemd/system/epaper-dashboard@.service
 sudo systemctl daemon-reload
 sudo systemctl disable --now epaper-dashboard.timer 2>/dev/null || true
 sudo systemctl disable --now epaper-dashboard-clock.timer 2>/dev/null || true
 sudo systemctl disable --now epaper-dashboard-clock.service 2>/dev/null || true
-sudo systemctl enable --now epaper-dashboard.service
+sudo systemctl disable --now epaper-dashboard.service 2>/dev/null || true
+sudo systemctl enable --now epaper-dashboard@dash.service
 ```
 
 ## 7. Useful commands
 
 ```bash
-systemctl status epaper-dashboard.service   # daemon status
-journalctl -u epaper-dashboard.service -f   # live logs
-sudo systemctl restart epaper-dashboard.service
+systemctl status epaper-dashboard@dash.service   # daemon status
+journalctl -u epaper-dashboard@dash.service -f   # live logs
+sudo systemctl restart epaper-dashboard@dash.service
 ```
 
 ## Status dot legend
