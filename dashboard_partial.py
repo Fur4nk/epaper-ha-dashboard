@@ -85,8 +85,8 @@ def diff_snapshots(prev_snap, curr_snap):
 def build_dynamic_partial_rects(data: dict, header_h: int, width: int, height: int, changed: dict = None):
     rects = []
     y = header_h
-    y += 10
-    y += 16
+    y += 6
+    y += 12
     row_y = y
     row_h = 72
 
@@ -106,7 +106,7 @@ def build_dynamic_partial_rects(data: dict, header_h: int, width: int, height: i
             rects.append((8, fc_top + 20, width - 8, fc_top + 64))
         y += 64
 
-    y += 4
+    y += 10
     y += 10
     y += 16
     y += 4

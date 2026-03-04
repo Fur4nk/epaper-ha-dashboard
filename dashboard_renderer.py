@@ -196,7 +196,7 @@ def render_dashboard(
     )
     y = header_h
 
-    y += 10
+    y += 6
     weather = data["weather"]
     cond = weather.get("condition", "unknown")
     out_temp = weather.get("temperature")
@@ -206,7 +206,7 @@ def render_dashboard(
     dayparts = weather.get("dayparts", {}) if isinstance(weather, dict) else {}
 
     draw.text((16, y), labels.get("outdoor", "OUTDOOR"), fill=0, font=fonts["section"])
-    y += 16
+    y += 12
 
     row_y = y
     row_h = 72
@@ -292,15 +292,16 @@ def render_dashboard(
             draw.text((fx, y + 54), f"{t_hi}°/{t_lo}°", fill=0, font=fonts["fc_temp"], anchor="mt")
         y += 64
 
-    y += 4
+    y += 10
     draw.rectangle([(0, y), (width, y + 2)], fill=0)
     y += 10
 
-    draw.text((16, y), labels.get("rooms", "ROOMS"), fill=0, font=fonts["section"])
+    header_font = fonts["section"]
+    draw.text((16, y - 4), labels.get("rooms", "ROOMS"), fill=0, font=header_font)
     col_t = width - 130
     col_h = width - 48
-    draw.text((col_t + 20, y + 1), labels.get("temp", "TEMP"), fill=0, font=fonts["col_hdr"], anchor="mt")
-    draw.text((col_h, y + 1), labels.get("hum", "HUM"), fill=0, font=fonts["col_hdr"], anchor="mt")
+    draw.text((col_t + 20, y), labels.get("temp", "TEMP"), fill=0, font=header_font, anchor="mt")
+    draw.text((col_h, y), labels.get("hum", "HUM"), fill=0, font=header_font, anchor="mt")
     y += 16
     draw.line([(16, y), (width - 16, y)], fill=0, width=1)
     y += 4
