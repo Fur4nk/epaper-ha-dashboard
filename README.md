@@ -52,6 +52,8 @@ python3 ha_epaper_dashboard.py --mode clock-daemon \
 - Localization and translations: `docs/I18N.md`
 - Icon assets naming/path rules: `assets/icons/README.md`
 
+Available locales: `en`, `it`, `es`, `fr`, `de`, `pt`
+
 ## Notes
 
 - `secrets.json` contains your HA token and must stay private.
