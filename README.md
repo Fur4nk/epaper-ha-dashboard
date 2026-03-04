@@ -46,11 +46,11 @@ python3 ha_epaper_dashboard.py --mode clock-daemon \
 
 ## Documentation
 
-- Configuration reference: `docs/CONFIGURATION.md`
-- CLI modes and runtime behavior: `docs/USAGE.md`
-- systemd service setup: `docs/SYSTEMD.md`
-- Localization and translations: `docs/I18N.md`
-- Icon assets naming/path rules: `assets/icons/README.md`
+- Configuration reference: [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+- CLI modes and runtime behavior: [docs/USAGE.md](docs/USAGE.md)
+- systemd service setup: [docs/SYSTEMD.md](docs/SYSTEMD.md)
+- Localization and translations: [docs/I18N.md](docs/I18N.md)
+- Icon assets naming/path rules: [assets/icons/README.md](assets/icons/README.md)
 
 Available locales: `en`, `it`, `es`, `fr`, `de`, `pt`
 
