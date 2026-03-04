@@ -1,0 +1,37 @@
+{
+    "weekdays_abbr": ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
+    "weekdays_full": ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"],
+    "months_abbr": ["Jan", "Feb", "Mar", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"],
+    "months_full": ["Januar", "Februar", "Maerz", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
+    "intraday_labels": ["Morgen", "Nachmittag", "Abend"],
+    "condition_labels": {
+        "sunny": "Sonnig",
+        "clear-night": "Klar",
+        "partlycloudy": "Teilweise bewolkt",
+        "cloudy": "Bewolkt",
+        "rainy": "Regen",
+        "pouring": "Starker Regen",
+        "snowy": "Schnee",
+        "snowy-rainy": "Schneeregen",
+        "fog": "Nebel",
+        "hail": "Hagel",
+        "lightning": "Gewitter",
+        "lightning-rainy": "Gewitter",
+        "windy": "Windig",
+        "windy-variant": "Windig",
+        "exceptional": "Aussergewoehnlich"
+    },
+    "labels": {
+        "last_updated": "Aktualisiert",
+        "outdoor": "AUSSEN",
+        "rooms": "ZIMMER",
+        "temp": "TEMP",
+        "hum": "LUFTF",
+        "humidity_short": "Lf",
+        "wind_short": "Wi"
+    },
+    "fallback_quote": {
+        "text": "Es scheint immer unmoeglich, bis es getan ist.",
+        "author": "Nelson Mandela"
+    }
+}

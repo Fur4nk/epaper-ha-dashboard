@@ -1,0 +1,37 @@
+{
+    "weekdays_abbr": ["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"],
+    "weekdays_full": ["Segunda", "Terca", "Quarta", "Quinta", "Sexta", "Sabado", "Domingo"],
+    "months_abbr": ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"],
+    "months_full": ["Janeiro", "Fevereiro", "Marco", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"],
+    "intraday_labels": ["Manha", "Tarde", "Noite"],
+    "condition_labels": {
+        "sunny": "Ensolarado",
+        "clear-night": "Limpo",
+        "partlycloudy": "Parcialmente nublado",
+        "cloudy": "Nublado",
+        "rainy": "Chuva",
+        "pouring": "Chuva forte",
+        "snowy": "Neve",
+        "snowy-rainy": "Neve com chuva",
+        "fog": "Nevoeiro",
+        "hail": "Granizo",
+        "lightning": "Tempestade",
+        "lightning-rainy": "Tempestade",
+        "windy": "Ventoso",
+        "windy-variant": "Ventoso",
+        "exceptional": "Excecional"
+    },
+    "labels": {
+        "last_updated": "Atualizado",
+        "outdoor": "EXTERIOR",
+        "rooms": "COMODOS",
+        "temp": "TEMP",
+        "hum": "UMID",
+        "humidity_short": "Um",
+        "wind_short": "Ve"
+    },
+    "fallback_quote": {
+        "text": "Sempre parece impossivel ate que seja feito.",
+        "author": "Nelson Mandela"
+    }
+}
