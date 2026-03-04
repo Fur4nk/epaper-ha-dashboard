@@ -83,6 +83,7 @@ Default: frase del giorno da ZenQuotes con cache locale giornaliera.
 Localization and labels:
 
 - `locale` (translation file name in `i18n/<locale>.json`, default `en`)
+Available locales: `en`, `it`, `es`, `fr`, `de`, `pt`
 - `header_title` (header label, default `"HOUSE"`)
 - `header_weekday_format` (`full` or `abbr`)
 - `header_month_format` (`full` or `abbr`)
