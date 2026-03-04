@@ -1,196 +1,59 @@
-# e-Paper Dashboard — Setup
+# e-Paper HA Dashboard
 
-Home Assistant dashboard for Waveshare 7.5" V2 e-Paper display (800×480) in portrait mode.  
-Displays indoor room temperature/humidity, outdoor weather, and 4-day forecast.
+100% vibe-coded - 100% manually tested
+
+Portrait dashboard for Waveshare 7.5" V2 e-Paper (800x480) driven by Home Assistant.
+It shows outdoor weather, intraday + multiday forecast, indoor room temperature/humidity, and a daily quote.
 
 ## Preview
 
 ![e-Paper dashboard preview](epaper_dashboard.png)
 
-## File structure
+## Quick Start
 
-```
-epaper-dashboard/
-├── ha_epaper_dashboard.py      # main script (safe to commit)
-├── config.json.example         # rooms/entities template (safe to commit)
-├── config.json                 # your configuration (safe to commit, no secrets)
-├── secrets.json.example        # credentials template (safe to commit)
-└── secrets.json                # your HA credentials (DO NOT commit)
-```
-
-## 1. Dependencies
-
+1. Install dependencies.
 ```bash
 sudo apt install python3-pil python3-numpy python3-rpi.gpio python3-spidev
+```
+
+2. Clone Waveshare driver library.
+```bash
 git clone https://github.com/waveshare/e-Paper ~/src/e-Paper
 ```
 
-You can point the script to Waveshare library path with:
-
-- CLI: `--epd-lib-path /path/to/e-Paper/RaspberryPi_JetsonNano/python/lib`
-- env: `EPD_LIB_PATH=/path/to/e-Paper/RaspberryPi_JetsonNano/python/lib`
-
-## 2. Setup
-
+3. Prepare local config files.
 ```bash
-cd /home/pi
-git clone <your-repo> epaper-dashboard
-cd epaper-dashboard
-
 cp secrets.json.example secrets.json
 cp config.json.example config.json
-
-nano secrets.json   # HA credentials (gitignored)
-nano config.json    # rooms and entities
 ```
 
-## 3. secrets.json
-
-```json
-{
-    "ha_url": "http://192.168.1.X:8123",
-    "ha_token": "eyJhbGciOi..."
-}
-```
-
-To create a Long-Lived Access Token:  
-HA → User profile → Long-lived access tokens → Create token
-
-## 4. config.json
-
-Available room icons: `kitchen`, `livingroom`, `bedroom`, `childroom`, `bathroom`, `laundry`, `storage`
-
-Supported weather condition names (for icon assets):  
-`sunny`, `clear-night`, `partlycloudy`, `cloudy`, `rainy`, `pouring`, `snowy`, `snowy-rainy`, `fog`, `hail`, `lightning`, `lightning-rainy`, `windy`, `windy-variant`, `exceptional`
-
-Optional outdoor entities:
-
-- `outdoor_uv`
-- `outdoor_aqi`
-- `outdoor_pm25`
-- `sun_entity` (default: `sun.sun`)
-
-Optional footer quote fields:
-
-- `footer_daily_quote` (`true` = nuova frase ogni giorno da ZenQuotes)
-- `footer_quote`
-- `footer_source`
-- `quote_api_url` (default: `https://zenquotes.io/api/today`)
-- `quote_cache_file` (default: `/tmp/epaper_daily_quote.json`)
-
-Default: frase del giorno da ZenQuotes con cache locale giornaliera.
-
-Localization and labels:
-
-- `locale` (translation file name in `i18n/<locale>.json`, default `en`)
-Available locales: `en`, `it`, `es`, `fr`, `de`, `pt`
-- `header_title` (header label, default `"HOUSE"`)
-- `header_weekday_format` (`full` or `abbr`)
-- `header_month_format` (`full` or `abbr`)
-- `forecast_weekday_format` (`full` or `abbr`)
-- `show_clock` (`true` = show HH:MM in header, `false` = hide clock and show larger date in its place)
-- `clock_partial_refresh` (`true` enables partial updates in `clock-daemon`)
-- `clock_partial_fullscreen` (`true` = partial su schermo intero, comportamento più simile al demo Waveshare)
-- `clock_daemon_interval_sec` (default `60`)
-- `clock_daemon_full_every` (force full refresh every N ticks, default `240`)
-- `clock_daemon_data_every_min` (refresh non-clock data every N minutes, default `10`)
-
-Translation files contain fixed UI strings only (labels, weekdays/months, weather conditions).
-Personalizations stay in `config.json` (for example `header_title`).
-
-## 5. Test
-
+4. Edit credentials/entities.
 ```bash
-# PNG preview with demo data (no HA, no e-paper)
-python3 ha_epaper_dashboard.py --simulate --demo --output preview.png
+nano secrets.json
+nano config.json
+```
 
-# PNG preview with live HA data (no e-paper)
+5. Test with PNG preview.
+```bash
 python3 ha_epaper_dashboard.py --simulate --output preview.png
-
-# Run on actual display
-python3 ha_epaper_dashboard.py
-
-# Run on display with explicit Waveshare path
-python3 ha_epaper_dashboard.py --epd-lib-path ~/src/e-Paper/RaspberryPi_JetsonNano/python/lib
-
-# Clock-only update (header only, reuses cached full image)
-python3 ha_epaper_dashboard.py --mode clock --epd-lib-path ~/src/e-Paper/RaspberryPi_JetsonNano/python/lib
-
-# Continuous clock daemon (recommended for real partial updates)
-python3 ha_epaper_dashboard.py --mode clock-daemon --epd-lib-path ~/src/e-Paper/RaspberryPi_JetsonNano/python/lib
-
-# Optional: override daemon timing
-python3 ha_epaper_dashboard.py --mode clock-daemon --clock-interval-sec 60 --clock-data-every-min 10 --clock-full-every 240 --epd-lib-path ~/src/e-Paper/RaspberryPi_JetsonNano/python/lib
 ```
 
-## 5b. Optional icon assets
-
-You can use PNG icon files instead of built-in drawn icons.  
-See `assets/icons/README.md` for full naming and directory layout.
-
-Supported paths:
-
-- `assets/icons/weather/<condition>.png`
-- `assets/icons/rooms/<room_icon>.png`
-- `assets/icons/weather_<condition>.png`
-- `assets/icons/rooms_<room_icon>.png`
-
-Name matching also supports `-`/`_` variants automatically.
-
+6. Run on e-Paper.
 ```bash
-# Use default assets/icons
-python3 ha_epaper_dashboard.py --simulate --output preview.png
-
-# Or provide a custom icons directory
-python3 ha_epaper_dashboard.py --simulate --icons-dir /path/to/icons --output preview.png
+python3 ha_epaper_dashboard.py --mode clock-daemon \
+  --epd-lib-path ~/src/e-Paper/RaspberryPi_JetsonNano/python/lib
 ```
 
-## 6. Systemd
+## Documentation
 
-Recommended:
+- Configuration reference: `docs/CONFIGURATION.md`
+- CLI modes and runtime behavior: `docs/USAGE.md`
+- systemd service setup: `docs/SYSTEMD.md`
+- Localization and translations: `docs/I18N.md`
+- Icon assets naming/path rules: `assets/icons/README.md`
 
-- one long-running daemon service
-- every minute updates clock (only if `show_clock: true`)
-- every 10 minutes updates non-clock data
-- every N ticks (default 240) performs full refresh (4h with 60s tick)
+## Notes
 
-Prebuilt unit template is provided in `systemd/` and works for any Linux user.
-Default paths are based on the selected user's home:
-
-- app dir: `%h/src/epaper-ha-dashboard`
-- Waveshare lib: `%h/src/e-Paper/RaspberryPi_JetsonNano/python/lib`
-
-Optional overrides can be set in `/etc/default/epaper-dashboard`:
-
-```bash
-APP_DIR=/custom/path/epaper-ha-dashboard
-EPD_LIB_PATH=/custom/path/e-Paper/RaspberryPi_JetsonNano/python/lib
-MODE=clock-daemon
-EXTRA_ARGS=--clock-data-every-min 10 --clock-full-every 240
-```
-
-Then enable:
-
-```bash
-sudo install -m 644 systemd/epaper-dashboard@.service /etc/systemd/system/epaper-dashboard@.service
-sudo systemctl daemon-reload
-sudo systemctl disable --now epaper-dashboard.timer 2>/dev/null || true
-sudo systemctl disable --now epaper-dashboard-clock.timer 2>/dev/null || true
-sudo systemctl disable --now epaper-dashboard-clock.service 2>/dev/null || true
-sudo systemctl disable --now epaper-dashboard.service 2>/dev/null || true
-sudo systemctl enable --now epaper-dashboard@dash.service
-```
-
-## 7. Useful commands
-
-```bash
-systemctl status epaper-dashboard@dash.service   # daemon status
-journalctl -u epaper-dashboard@dash.service -f   # live logs
-sudo systemctl restart epaper-dashboard@dash.service
-```
-
-## Status dot legend
-
-- `○` empty = Comfort (18–24°C, humidity < 65%)
-- `◉` ring = Temperature out of range
-- `●` filled = High humidity (> 65%)
+- `secrets.json` contains your HA token and must stay private.
+- `show_clock: false` disables clock drawing; header shows a larger date instead.
+- Daily quote defaults to ZenQuotes (`https://zenquotes.io/api/today`) with local cache.
