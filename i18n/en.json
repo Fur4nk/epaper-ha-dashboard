@@ -1,0 +1,37 @@
+{
+    "weekdays_abbr": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    "weekdays_full": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+    "months_abbr": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    "months_full": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+    "intraday_labels": ["Morning", "Afternoon", "Evening"],
+    "condition_labels": {
+        "sunny": "Sunny",
+        "clear-night": "Clear",
+        "partlycloudy": "Partly cloudy",
+        "cloudy": "Cloudy",
+        "rainy": "Rain",
+        "pouring": "Heavy rain",
+        "snowy": "Snow",
+        "snowy-rainy": "Sleet",
+        "fog": "Fog",
+        "hail": "Hail",
+        "lightning": "Storm",
+        "lightning-rainy": "Storm",
+        "windy": "Windy",
+        "windy-variant": "Windy",
+        "exceptional": "Exceptional"
+    },
+    "labels": {
+        "last_updated": "Last updated",
+        "outdoor": "OUTDOOR",
+        "rooms": "ROOMS",
+        "temp": "TEMP",
+        "hum": "HUM",
+        "humidity_short": "Hu",
+        "wind_short": "Wi"
+    },
+    "fallback_quote": {
+        "text": "It always seems impossible until it is done.",
+        "author": "Nelson Mandela"
+    }
+}

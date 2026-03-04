@@ -62,7 +62,8 @@ DAYPARTS_CACHE_FILE = _config.get("dayparts_cache_file", "/tmp/epaper_dayparts_c
 HEADER_WEEKDAY_FORMAT = _config.get("header_weekday_format", "full")
 HEADER_MONTH_FORMAT = _config.get("header_month_format", "full")
 FORECAST_WEEKDAY_FORMAT = _config.get("forecast_weekday_format", "abbr")
-INTRADAY_LABELS = _config.get("intraday_labels", ["Morning", "Afternoon", "Evening"])
+LOCALE = str(_config.get("locale", "en")).strip().lower() or "en"
+I18N_DIR = os.path.join(SCRIPT_DIR, "i18n")
 HEADER_TITLE = str(_config.get("header_title", "HOUSE")).strip() or "HOUSE"
 CLOCK_PARTIAL_REFRESH = _config.get("clock_partial_refresh", True)
 CLOCK_PARTIAL_FULLSCREEN = _config.get("clock_partial_fullscreen", True)
@@ -683,45 +684,90 @@ def demo_data() -> dict:
 # ║  RENDERER                                                                ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
-WEEKDAYS_ABBR = _config.get("weekdays_abbr", ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
-MONTHS_ABBR = _config.get(
-    "months_abbr",
-    ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-)
-WEEKDAYS_FULL = _config.get(
-    "weekdays_full",
-    ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
-)
-MONTHS_FULL = _config.get(
-    "months_full",
-    [
+_DEFAULT_I18N = {
+    "weekdays_abbr": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    "weekdays_full": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+    "months_abbr": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    "months_full": [
         "January", "February", "March", "April", "May", "June",
         "July", "August", "September", "October", "November", "December",
     ],
-)
-CONDITION_LABELS = {
-    "sunny":"Sereno","clear-night":"Sereno","partlycloudy":"Parz. nuvoloso",
-    "cloudy":"Nuvoloso","rainy":"Pioggia","pouring":"Pioggia forte",
-    "snowy":"Neve","snowy-rainy":"Nevischio","fog":"Nebbia",
-    "hail":"Grandine","lightning":"Temporale","lightning-rainy":"Temporale",
-    "windy":"Ventoso","windy-variant":"Ventoso","exceptional":"Eccezionale",
+    "intraday_labels": ["Morning", "Afternoon", "Evening"],
+    "condition_labels": {
+        "sunny": "Sunny", "clear-night": "Clear", "partlycloudy": "Partly cloudy",
+        "cloudy": "Cloudy", "rainy": "Rain", "pouring": "Heavy rain",
+        "snowy": "Snow", "snowy-rainy": "Sleet", "fog": "Fog",
+        "hail": "Hail", "lightning": "Storm", "lightning-rainy": "Storm",
+        "windy": "Windy", "windy-variant": "Windy", "exceptional": "Exceptional",
+    },
+    "labels": {
+        "last_updated": "Last updated",
+        "outdoor": "OUTDOOR",
+        "rooms": "ROOMS",
+        "temp": "TEMP",
+        "hum": "HUM",
+        "humidity_short": "Hu",
+        "wind_short": "Wi",
+    },
+    "fallback_quote": {
+        "text": "It always seems impossible until it is done.",
+        "author": "Nelson Mandela",
+    },
 }
 
+
+def _load_i18n_dict(locale: str) -> dict:
+    out = dict(_DEFAULT_I18N)
+    lang_path = os.path.join(I18N_DIR, f"{locale}.json")
+    try:
+        with open(lang_path) as f:
+            loaded = json.load(f)
+        if isinstance(loaded, dict):
+            for key, value in loaded.items():
+                if isinstance(value, dict) and isinstance(out.get(key), dict):
+                    merged = dict(out[key])
+                    merged.update(value)
+                    out[key] = merged
+                else:
+                    out[key] = value
+    except Exception as e:
+        log.warning(f"Failed to load locale '{locale}' from {lang_path}: {e}. Using defaults.")
+    return out
+
+
+_I18N = _load_i18n_dict(LOCALE)
+WEEKDAYS_ABBR = _I18N.get("weekdays_abbr", _DEFAULT_I18N["weekdays_abbr"])
+WEEKDAYS_FULL = _I18N.get("weekdays_full", _DEFAULT_I18N["weekdays_full"])
+MONTHS_ABBR = _I18N.get("months_abbr", _DEFAULT_I18N["months_abbr"])
+MONTHS_FULL = _I18N.get("months_full", _DEFAULT_I18N["months_full"])
+INTRADAY_LABELS = _I18N.get("intraday_labels", _DEFAULT_I18N["intraday_labels"])
+CONDITION_LABELS = _I18N.get("condition_labels", _DEFAULT_I18N["condition_labels"])
+LABELS = _I18N.get("labels", _DEFAULT_I18N["labels"])
+_FALLBACK_QUOTE_I18N = _I18N.get("fallback_quote", _DEFAULT_I18N["fallback_quote"])
+
 if not isinstance(WEEKDAYS_ABBR, list) or len(WEEKDAYS_ABBR) != 7:
-    log.warning("Invalid weekdays_abbr in config.json, using defaults")
-    WEEKDAYS_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    log.warning("Invalid i18n weekdays_abbr, using defaults")
+    WEEKDAYS_ABBR = _DEFAULT_I18N["weekdays_abbr"]
 if not isinstance(WEEKDAYS_FULL, list) or len(WEEKDAYS_FULL) != 7:
-    log.warning("Invalid weekdays_full in config.json, using defaults")
-    WEEKDAYS_FULL = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    log.warning("Invalid i18n weekdays_full, using defaults")
+    WEEKDAYS_FULL = _DEFAULT_I18N["weekdays_full"]
 if not isinstance(MONTHS_ABBR, list) or len(MONTHS_ABBR) != 12:
-    log.warning("Invalid months_abbr in config.json, using defaults")
-    MONTHS_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    log.warning("Invalid i18n months_abbr, using defaults")
+    MONTHS_ABBR = _DEFAULT_I18N["months_abbr"]
 if not isinstance(MONTHS_FULL, list) or len(MONTHS_FULL) != 12:
-    log.warning("Invalid months_full in config.json, using defaults")
-    MONTHS_FULL = [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December",
-    ]
+    log.warning("Invalid i18n months_full, using defaults")
+    MONTHS_FULL = _DEFAULT_I18N["months_full"]
+if not isinstance(INTRADAY_LABELS, list) or len(INTRADAY_LABELS) != 3:
+    log.warning("Invalid i18n intraday_labels, using defaults")
+    INTRADAY_LABELS = _DEFAULT_I18N["intraday_labels"]
+if not isinstance(CONDITION_LABELS, dict):
+    log.warning("Invalid i18n condition_labels, using defaults")
+    CONDITION_LABELS = _DEFAULT_I18N["condition_labels"]
+if not isinstance(LABELS, dict):
+    log.warning("Invalid i18n labels, using defaults")
+    LABELS = _DEFAULT_I18N["labels"]
+if not isinstance(_FALLBACK_QUOTE_I18N, dict):
+    _FALLBACK_QUOTE_I18N = _DEFAULT_I18N["fallback_quote"]
 
 if HEADER_WEEKDAY_FORMAT not in ("full", "abbr"):
     log.warning("Invalid header_weekday_format in config.json, using 'full'")
@@ -737,8 +783,8 @@ if not isinstance(INTRADAY_LABELS, list) or len(INTRADAY_LABELS) != 3:
     INTRADAY_LABELS = ["Morning", "Afternoon", "Evening"]
 
 FALLBACK_QUOTE = (
-    "Sembra sempre impossibile finche non viene fatto.",
-    "Nelson Mandela",
+    str(_FALLBACK_QUOTE_I18N.get("text", _DEFAULT_I18N["fallback_quote"]["text"])),
+    str(_FALLBACK_QUOTE_I18N.get("author", _DEFAULT_I18N["fallback_quote"]["author"])),
 )
 
 
@@ -877,7 +923,7 @@ def draw_footer(
 ):
     footer_top = H - 50
     if last_updated is not None:
-        stamp = f"Last updated {last_updated.strftime('%H:%M')}"
+        stamp = f"{LABELS.get('last_updated', 'Last updated')} {last_updated.strftime('%H:%M')}"
         draw.text((W - 16, footer_top - 14), stamp, fill=0, font=fonts["tiny"], anchor="ra")
     draw.line([(16, footer_top), (W - 16, footer_top)], fill=0, width=1)
     quote_raw, source_raw = footer_text(now)
@@ -937,7 +983,7 @@ def render(data: dict, now: datetime = None, last_updated: datetime = None) -> I
     uv = weather.get("uv_index")
     dayparts = weather.get("dayparts", {}) if isinstance(weather, dict) else {}
 
-    draw.text((16, y), "ESTERNO", fill=0, font=fonts["section"])
+    draw.text((16, y), LABELS.get("outdoor", "OUTDOOR"), fill=0, font=fonts["section"])
     y += 16
 
     # Single-row layout: current (left) + intraday tiles (right)
@@ -953,11 +999,11 @@ def render(data: dict, now: datetime = None, last_updated: datetime = None) -> I
     cond_text = _fit_text(draw, cond_text, fonts["tiny"], split_x - info_x - 12)
     draw.text((info_x, row_y + 8), cond_text, fill=0, font=fonts["tiny"])
     label_w = 18
-    draw.text((info_x, row_y + 22), "Um", fill=0, font=fonts["tiny"])
+    draw.text((info_x, row_y + 22), LABELS.get("humidity_short", "Hu"), fill=0, font=fonts["tiny"])
     draw.text((info_x + label_w, row_y + 22),
               f"{out_hum:.0f}%" if out_hum is not None else "--%", fill=0, font=fonts["tiny"])
     wind_x = info_x + 2
-    draw.text((wind_x, row_y + 35), "Ve", fill=0, font=fonts["tiny"])
+    draw.text((wind_x, row_y + 35), LABELS.get("wind_short", "Wi"), fill=0, font=fonts["tiny"])
     draw.text((wind_x + label_w, row_y + 35),
               f"{wind:.0f} km/h" if wind is not None else "-- km/h", fill=0, font=fonts["tiny"])
 
@@ -1034,11 +1080,11 @@ def render(data: dict, now: datetime = None, last_updated: datetime = None) -> I
     y += 10
 
     # ── ROOMS HEADER ────────────────────────────────────────
-    draw.text((16, y), "STANZE", fill=0, font=fonts["section"])
+    draw.text((16, y), LABELS.get("rooms", "ROOMS"), fill=0, font=fonts["section"])
     col_t = W - 130
     col_h = W - 48
-    draw.text((col_t+20, y+1), "TEMP", fill=0, font=fonts["col_hdr"], anchor="mt")
-    draw.text((col_h, y+1), "UMID", fill=0, font=fonts["col_hdr"], anchor="mt")
+    draw.text((col_t+20, y+1), LABELS.get("temp", "TEMP"), fill=0, font=fonts["col_hdr"], anchor="mt")
+    draw.text((col_h, y+1), LABELS.get("hum", "HUM"), fill=0, font=fonts["col_hdr"], anchor="mt")
     y += 16
     draw.line([(16, y), (W-16, y)], fill=0, width=1)
     y += 4

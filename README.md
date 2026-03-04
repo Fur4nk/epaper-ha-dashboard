@@ -80,13 +80,9 @@ Optional footer quote fields:
 
 Default: frase del giorno da ZenQuotes con cache locale giornaliera.
 
-Optional weekday label overrides:
+Localization and labels:
 
-- `weekdays_full` (7 entries for header date)
-- `weekdays_abbr` (7 entries for forecast labels)
-- `months_full` (12 entries for header date)
-- `months_abbr` (12 entries for header date)
-- `intraday_labels` (3 entries, default `["Morning", "Afternoon", "Evening"]`)
+- `locale` (translation file name in `i18n/<locale>.json`, default `en`)
 - `header_title` (header label, default `"HOUSE"`)
 - `header_weekday_format` (`full` or `abbr`)
 - `header_month_format` (`full` or `abbr`)
@@ -97,6 +93,9 @@ Optional weekday label overrides:
 - `clock_daemon_interval_sec` (default `60`)
 - `clock_daemon_full_every` (force full refresh every N ticks, default `240`)
 - `clock_daemon_data_every_min` (refresh non-clock data every N minutes, default `10`)
+
+Translation files contain fixed UI strings only (labels, weekdays/months, weather conditions).
+Personalizations stay in `config.json` (for example `header_title`).
 
 ## 5. Test
 
