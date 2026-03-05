@@ -235,9 +235,9 @@ def _get_weather(
     out_aqi = _get_state(ha_url, ha_token, outdoor_aqi, log)
     out_pm25 = _get_state(ha_url, ha_token, outdoor_pm25, log)
     if out_t is not None:
-        result["temperature"] = float(out_t)
+        result["temperature"] = _to_float(out_t)
     if out_h is not None:
-        result["humidity"] = float(out_h)
+        result["humidity"] = _to_float(out_h)
     if out_uv is not None:
         result["uv_index"] = _to_float(out_uv)
     if out_aqi is not None:
@@ -279,8 +279,8 @@ def fetch_all_data(
             {
                 "name": room["name"],
                 "icon": room["icon"],
-                "temp": float(t) if t else None,
-                "hum": float(h) if h else None,
+                "temp": _to_float(t),
+                "hum": _to_float(h),
             }
         )
     return {
