@@ -1,3 +1,10 @@
+def _rounded_or_none(value, to_float, digits):
+    parsed = to_float(value)
+    if parsed is None:
+        return None
+    return round(parsed, digits)
+
+
 def _room_status_key(temp_v, hum_v, to_float):
     t = to_float(temp_v)
     h = to_float(hum_v)
@@ -17,10 +24,10 @@ def build_data_snapshot(data: dict, to_float):
     rooms = data.get("rooms", []) if isinstance(data, dict) else []
 
     outdoor = (
-        round(to_float(weather.get("temperature")) or 0.0, 1),
-        round(to_float(weather.get("humidity")) or 0.0, 0),
-        round(to_float(weather.get("wind_speed")) or 0.0, 0),
-        round(to_float(weather.get("uv_index")) or 0.0, 1),
+        _rounded_or_none(weather.get("temperature"), to_float, 1),
+        _rounded_or_none(weather.get("humidity"), to_float, 0),
+        _rounded_or_none(weather.get("wind_speed"), to_float, 0),
+        _rounded_or_none(weather.get("uv_index"), to_float, 1),
         str(weather.get("condition", "unknown")),
     )
 
@@ -31,8 +38,8 @@ def build_data_snapshot(data: dict, to_float):
             (
                 key,
                 str(entry.get("condition", "unknown")),
-                round(to_float(entry.get("min")) or 0.0, 1),
-                round(to_float(entry.get("max")) or 0.0, 1),
+                _rounded_or_none(entry.get("min"), to_float, 1),
+                _rounded_or_none(entry.get("max"), to_float, 1),
             )
         )
 
@@ -44,8 +51,8 @@ def build_data_snapshot(data: dict, to_float):
             (
                 str(item.get("datetime", "")),
                 str(item.get("condition", "unknown")),
-                round(to_float(item.get("temperature")) or 0.0, 1),
-                round(to_float(item.get("templow")) or 0.0, 1),
+                _rounded_or_none(item.get("temperature"), to_float, 1),
+                _rounded_or_none(item.get("templow"), to_float, 1),
             )
         )
 
@@ -53,8 +60,8 @@ def build_data_snapshot(data: dict, to_float):
     for room in rooms:
         if not isinstance(room, dict):
             continue
-        t = round(to_float(room.get("temp")) or 0.0, 1)
-        h = round(to_float(room.get("hum")) or 0.0, 0)
+        t = _rounded_or_none(room.get("temp"), to_float, 1)
+        h = _rounded_or_none(room.get("hum"), to_float, 0)
         status = _room_status_key(room.get("temp"), room.get("hum"), to_float)
         room_values.append((t, h, status))
 

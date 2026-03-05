@@ -42,45 +42,58 @@ import json
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-def _load_json(filename: str) -> dict:
+def _load_json(filename: str, required: bool = True) -> dict:
     path = os.path.join(SCRIPT_DIR, filename)
     if not os.path.exists(path):
-        print(f"ERROR: {path} not found. Copy {filename}.example to {filename} and edit it.")
-        sys.exit(1)
-    with open(path) as f:
-        return json.load(f)
+        if required:
+            print(f"ERROR: {path} not found. Copy {filename}.example to {filename} and edit it.")
+            sys.exit(1)
+        return {}
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception as e:
+        if required:
+            print(f"ERROR: failed to parse {path}: {e}")
+            sys.exit(1)
+        return {}
 
-_secrets = _load_json("secrets.json")
-_config  = _load_json("config.json")
 
-HA_URL         = _secrets["ha_url"]
-HA_TOKEN       = _secrets["ha_token"]
-ROOMS          = _config["rooms"]
-WEATHER_ENTITY = _config["weather_entity"]
-OUTDOOR_TEMP   = _config.get("outdoor_temp", "")
-OUTDOOR_HUM    = _config.get("outdoor_hum", "")
-OUTDOOR_UV     = _config.get("outdoor_uv", "")
-OUTDOOR_AQI    = _config.get("outdoor_aqi", "")
-OUTDOOR_PM25   = _config.get("outdoor_pm25", "")
-SUN_ENTITY     = _config.get("sun_entity", "sun.sun")
-FOOTER_DAILY_QUOTE = _config.get("footer_daily_quote", True)
-FOOTER_QUOTE = _config.get("footer_quote", "")
-FOOTER_SOURCE = _config.get("footer_source", "")
-QUOTE_API_URL = _config.get("quote_api_url", "https://zenquotes.io/api/today")
-QUOTE_CACHE_FILE = _config.get("quote_cache_file", "/tmp/epaper_daily_quote.json")
-DAYPARTS_CACHE_FILE = _config.get("dayparts_cache_file", "/tmp/epaper_dayparts_cache.json")
-HEADER_WEEKDAY_FORMAT = _config.get("header_weekday_format", "full")
-HEADER_MONTH_FORMAT = _config.get("header_month_format", "full")
-FORECAST_WEEKDAY_FORMAT = _config.get("forecast_weekday_format", "abbr")
-LOCALE = str(_config.get("locale", "en")).strip().lower() or "en"
+def _to_int(value, default: int) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+HA_URL = ""
+HA_TOKEN = ""
+ROOMS = []
+WEATHER_ENTITY = ""
+OUTDOOR_TEMP = ""
+OUTDOOR_HUM = ""
+OUTDOOR_UV = ""
+OUTDOOR_AQI = ""
+OUTDOOR_PM25 = ""
+SUN_ENTITY = "sun.sun"
+FOOTER_DAILY_QUOTE = True
+FOOTER_QUOTE = ""
+FOOTER_SOURCE = ""
+QUOTE_API_URL = "https://zenquotes.io/api/today"
+QUOTE_CACHE_FILE = "/tmp/epaper_daily_quote.json"
+DAYPARTS_CACHE_FILE = "/tmp/epaper_dayparts_cache.json"
+HEADER_WEEKDAY_FORMAT = "full"
+HEADER_MONTH_FORMAT = "full"
+FORECAST_WEEKDAY_FORMAT = "abbr"
+LOCALE = "en"
 I18N_DIR = os.path.join(SCRIPT_DIR, "i18n")
-HEADER_TITLE = str(_config.get("header_title", "HOUSE")).strip() or "HOUSE"
-CLOCK_PARTIAL_REFRESH = _config.get("clock_partial_refresh", True)
-CLOCK_PARTIAL_FULLSCREEN = _config.get("clock_partial_fullscreen", True)
-CLOCK_DAEMON_INTERVAL_SEC = int(_config.get("clock_daemon_interval_sec", 60))
-CLOCK_DAEMON_FULL_EVERY = int(_config.get("clock_daemon_full_every", 240))
-CLOCK_DAEMON_DATA_EVERY_MIN = int(_config.get("clock_daemon_data_every_min", 10))
-SHOW_CLOCK = bool(_config.get("show_clock", True))
+HEADER_TITLE = "HOUSE"
+CLOCK_PARTIAL_REFRESH = True
+CLOCK_PARTIAL_FULLSCREEN = True
+CLOCK_DAEMON_INTERVAL_SEC = 60
+CLOCK_DAEMON_FULL_EVERY = 240
+CLOCK_DAEMON_DATA_EVERY_MIN = 10
+SHOW_CLOCK = True
 
 W, H = 480, 800
 HEADER_H = 56
@@ -88,6 +101,18 @@ HEADER_H = 56
 FONT_DIR = "/usr/share/fonts/truetype/dejavu"
 DEFAULT_ICON_DIR = os.path.join(SCRIPT_DIR, "assets", "icons")
 ICON_ASSETS = None
+
+WEEKDAYS_ABBR = DEFAULT_I18N["weekdays_abbr"]
+WEEKDAYS_FULL = DEFAULT_I18N["weekdays_full"]
+MONTHS_ABBR = DEFAULT_I18N["months_abbr"]
+MONTHS_FULL = DEFAULT_I18N["months_full"]
+INTRADAY_LABELS = DEFAULT_I18N["intraday_labels"]
+CONDITION_LABELS = DEFAULT_I18N["condition_labels"]
+LABELS = DEFAULT_I18N["labels"]
+FALLBACK_QUOTE = (
+    str(DEFAULT_I18N["fallback_quote"]["text"]),
+    str(DEFAULT_I18N["fallback_quote"]["author"]),
+)
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  LOGGING                                                                 ║
@@ -472,33 +497,76 @@ def demo_data() -> dict:
 # ║  RENDERER                                                                ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
-_I18N = load_i18n_bundle(LOCALE, I18N_DIR, log)
-WEEKDAYS_ABBR = _I18N["weekdays_abbr"]
-WEEKDAYS_FULL = _I18N["weekdays_full"]
-MONTHS_ABBR = _I18N["months_abbr"]
-MONTHS_FULL = _I18N["months_full"]
-INTRADAY_LABELS = _I18N["intraday_labels"]
-CONDITION_LABELS = _I18N["condition_labels"]
-LABELS = _I18N["labels"]
-_FALLBACK_QUOTE_I18N = _I18N["fallback_quote"]
+def configure_runtime(config: dict, secrets: dict, require_secrets: bool):
+    global HA_URL, HA_TOKEN, ROOMS, WEATHER_ENTITY, OUTDOOR_TEMP, OUTDOOR_HUM, OUTDOOR_UV
+    global OUTDOOR_AQI, OUTDOOR_PM25, SUN_ENTITY, FOOTER_DAILY_QUOTE, FOOTER_QUOTE, FOOTER_SOURCE
+    global QUOTE_API_URL, QUOTE_CACHE_FILE, DAYPARTS_CACHE_FILE, HEADER_WEEKDAY_FORMAT, HEADER_MONTH_FORMAT
+    global FORECAST_WEEKDAY_FORMAT, LOCALE, HEADER_TITLE, CLOCK_PARTIAL_REFRESH, CLOCK_PARTIAL_FULLSCREEN
+    global CLOCK_DAEMON_INTERVAL_SEC, CLOCK_DAEMON_FULL_EVERY, CLOCK_DAEMON_DATA_EVERY_MIN, SHOW_CLOCK
+    global WEEKDAYS_ABBR, WEEKDAYS_FULL, MONTHS_ABBR, MONTHS_FULL, INTRADAY_LABELS, CONDITION_LABELS, LABELS
+    global FALLBACK_QUOTE
 
-if HEADER_WEEKDAY_FORMAT not in ("full", "abbr"):
-    log.warning("Invalid header_weekday_format in config.json, using 'full'")
-    HEADER_WEEKDAY_FORMAT = "full"
-if HEADER_MONTH_FORMAT not in ("full", "abbr"):
-    log.warning("Invalid header_month_format in config.json, using 'full'")
-    HEADER_MONTH_FORMAT = "full"
-if FORECAST_WEEKDAY_FORMAT not in ("full", "abbr"):
-    log.warning("Invalid forecast_weekday_format in config.json, using 'abbr'")
-    FORECAST_WEEKDAY_FORMAT = "abbr"
-if not isinstance(INTRADAY_LABELS, list) or len(INTRADAY_LABELS) != 3:
-    log.warning("Invalid intraday_labels in config.json, using defaults")
-    INTRADAY_LABELS = ["Morning", "Afternoon", "Evening"]
+    HA_URL = str(secrets.get("ha_url", "")).strip()
+    HA_TOKEN = str(secrets.get("ha_token", "")).strip()
+    if require_secrets and (not HA_URL or not HA_TOKEN):
+        print("ERROR: secrets.json must contain non-empty 'ha_url' and 'ha_token'.")
+        sys.exit(1)
 
-FALLBACK_QUOTE = (
-    str(_FALLBACK_QUOTE_I18N.get("text", DEFAULT_I18N["fallback_quote"]["text"])),
-    str(_FALLBACK_QUOTE_I18N.get("author", DEFAULT_I18N["fallback_quote"]["author"])),
-)
+    rooms_value = config.get("rooms", [])
+    if not isinstance(rooms_value, list):
+        log.warning("Invalid config.rooms: expected list, using empty list")
+        rooms_value = []
+    ROOMS = rooms_value
+    WEATHER_ENTITY = str(config.get("weather_entity", "")).strip()
+    OUTDOOR_TEMP = str(config.get("outdoor_temp", "")).strip()
+    OUTDOOR_HUM = str(config.get("outdoor_hum", "")).strip()
+    OUTDOOR_UV = str(config.get("outdoor_uv", "")).strip()
+    OUTDOOR_AQI = str(config.get("outdoor_aqi", "")).strip()
+    OUTDOOR_PM25 = str(config.get("outdoor_pm25", "")).strip()
+    SUN_ENTITY = str(config.get("sun_entity", "sun.sun")).strip() or "sun.sun"
+    FOOTER_DAILY_QUOTE = bool(config.get("footer_daily_quote", True))
+    FOOTER_QUOTE = str(config.get("footer_quote", "")).strip()
+    FOOTER_SOURCE = str(config.get("footer_source", "")).strip()
+    QUOTE_API_URL = str(config.get("quote_api_url", "https://zenquotes.io/api/today")).strip()
+    QUOTE_CACHE_FILE = str(config.get("quote_cache_file", "/tmp/epaper_daily_quote.json")).strip()
+    DAYPARTS_CACHE_FILE = str(config.get("dayparts_cache_file", "/tmp/epaper_dayparts_cache.json")).strip()
+    HEADER_WEEKDAY_FORMAT = str(config.get("header_weekday_format", "full")).strip().lower()
+    HEADER_MONTH_FORMAT = str(config.get("header_month_format", "full")).strip().lower()
+    FORECAST_WEEKDAY_FORMAT = str(config.get("forecast_weekday_format", "abbr")).strip().lower()
+    LOCALE = str(config.get("locale", "en")).strip().lower() or "en"
+    HEADER_TITLE = str(config.get("header_title", "HOUSE")).strip() or "HOUSE"
+    CLOCK_PARTIAL_REFRESH = bool(config.get("clock_partial_refresh", True))
+    CLOCK_PARTIAL_FULLSCREEN = bool(config.get("clock_partial_fullscreen", True))
+    CLOCK_DAEMON_INTERVAL_SEC = _to_int(config.get("clock_daemon_interval_sec", 60), 60)
+    CLOCK_DAEMON_FULL_EVERY = _to_int(config.get("clock_daemon_full_every", 240), 240)
+    CLOCK_DAEMON_DATA_EVERY_MIN = _to_int(config.get("clock_daemon_data_every_min", 10), 10)
+    SHOW_CLOCK = bool(config.get("show_clock", True))
+
+    if HEADER_WEEKDAY_FORMAT not in ("full", "abbr"):
+        log.warning("Invalid header_weekday_format in config.json, using 'full'")
+        HEADER_WEEKDAY_FORMAT = "full"
+    if HEADER_MONTH_FORMAT not in ("full", "abbr"):
+        log.warning("Invalid header_month_format in config.json, using 'full'")
+        HEADER_MONTH_FORMAT = "full"
+    if FORECAST_WEEKDAY_FORMAT not in ("full", "abbr"):
+        log.warning("Invalid forecast_weekday_format in config.json, using 'abbr'")
+        FORECAST_WEEKDAY_FORMAT = "abbr"
+
+    i18n = load_i18n_bundle(LOCALE, I18N_DIR, log)
+    WEEKDAYS_ABBR = i18n["weekdays_abbr"]
+    WEEKDAYS_FULL = i18n["weekdays_full"]
+    MONTHS_ABBR = i18n["months_abbr"]
+    MONTHS_FULL = i18n["months_full"]
+    INTRADAY_LABELS = i18n["intraday_labels"]
+    CONDITION_LABELS = i18n["condition_labels"]
+    LABELS = i18n["labels"]
+    if not isinstance(INTRADAY_LABELS, list) or len(INTRADAY_LABELS) != 3:
+        INTRADAY_LABELS = list(DEFAULT_I18N["intraday_labels"])
+    fallback_quote = i18n["fallback_quote"] if isinstance(i18n.get("fallback_quote"), dict) else {}
+    FALLBACK_QUOTE = (
+        str(fallback_quote.get("text", DEFAULT_I18N["fallback_quote"]["text"])),
+        str(fallback_quote.get("author", DEFAULT_I18N["fallback_quote"]["author"])),
+    )
 
 
 def _read_quote_cache():
@@ -704,70 +772,75 @@ def run_clock_daemon(
     try:
         while True:
             now = datetime.now()
-            do_data = tick_count == 0 or (tick_count % data_every_ticks == 0)
-            do_clock_tick = bool(SHOW_CLOCK and not do_data)
+            try:
+                do_data = tick_count == 0 or (tick_count % data_every_ticks == 0)
+                do_clock_tick = bool(SHOW_CLOCK and not do_data)
 
-            if not do_data and not do_clock_tick:
-                tick_count += 1
-                now_ts = time.time()
-                sleep_s = max(0.1, interval_sec - (now_ts % interval_sec))
-                time.sleep(sleep_s)
-                continue
+                if not do_data and not do_clock_tick:
+                    tick_count += 1
+                    now_ts = time.time()
+                    sleep_s = max(0.1, interval_sec - (now_ts % interval_sec))
+                    time.sleep(sleep_s)
+                    continue
 
-            do_full = display_tick_count == 0 or (display_tick_count % full_every == 0)
+                do_full = display_tick_count == 0 or (display_tick_count % full_every == 0)
 
-            if do_data:
-                data = demo_data() if demo else fetch_all_data()
-                new_img = render(data, now=now, last_updated=now)
-                curr_snapshot = build_data_snapshot(data, _to_float)
-                changed = diff_snapshots(last_data_snapshot, curr_snapshot)
-                data_rects = build_dynamic_partial_rects(data, HEADER_H, W, H, changed=changed)
-                if do_full or last_frame_img is None:
-                    img = new_img
+                if do_data:
+                    data = demo_data() if demo else fetch_all_data()
+                    new_img = render(data, now=now, last_updated=now)
+                    curr_snapshot = build_data_snapshot(data, _to_float)
+                    changed = diff_snapshots(last_data_snapshot, curr_snapshot)
+                    data_rects = build_dynamic_partial_rects(data, HEADER_H, W, H, changed=changed)
+                    if do_full or last_frame_img is None:
+                        img = new_img
+                    else:
+                        img = last_frame_img.copy()
+                        for rect in data_rects:
+                            x0, y0, x1, y1 = rect
+                            img.paste(new_img.crop((x0, y0, x1, y1)), (x0, y0))
+                    last_data_snapshot = curr_snapshot
                 else:
                     img = last_frame_img.copy()
-                    for rect in data_rects:
-                        x0, y0, x1, y1 = rect
-                        img.paste(new_img.crop((x0, y0, x1, y1)), (x0, y0))
-                last_data_snapshot = curr_snapshot
-            else:
-                img = last_frame_img.copy()
-                update_clock_header(img, now=now)
+                    update_clock_header(img, now=now)
 
-            if do_full:
-                try:
-                    img.save(cache_image, "PNG")
-                except Exception as e:
-                    log.warning(f"Failed to update cache image {cache_image}: {e}")
-            buffer = epd.getbuffer(img.rotate(90, expand=True))
+                if do_full:
+                    try:
+                        img.save(cache_image, "PNG")
+                    except Exception as e:
+                        log.warning(f"Failed to update cache image {cache_image}: {e}")
+                buffer = epd.getbuffer(img.rotate(90, expand=True))
 
-            if do_full:
-                epd.init()
-                epd.display(buffer)
-            elif partial_enabled:
-                init_partial_fn()
-                if do_data:
-                    if partial_fullscreen:
-                        partial_ok = safe_partial_refresh(epd, disp_partial_fn, buffer, rect=None)
-                    else:
-                        partial_ok = partial_refresh_rects(epd, disp_partial_fn, buffer, data_rects)
-                    if not partial_ok:
-                        log.warning("Data partial refresh failed, switching to full refresh")
+                if do_full:
+                    epd.init()
+                    epd.display(buffer)
+                elif partial_enabled:
+                    init_partial_fn()
+                    if do_data:
+                        if partial_fullscreen:
+                            partial_ok = safe_partial_refresh(epd, disp_partial_fn, buffer, rect=None)
+                        else:
+                            partial_ok = partial_refresh_rects(epd, disp_partial_fn, buffer, data_rects)
+                        if not partial_ok:
+                            log.warning("Data partial refresh failed, switching to full refresh")
+                            partial_enabled = False
+                            epd.init()
+                            epd.display(buffer)
+                    elif not safe_partial_refresh(epd, disp_partial_fn, buffer, rect=None):
+                        log.warning("Clock daemon partial failed, switching to full refresh")
                         partial_enabled = False
                         epd.init()
                         epd.display(buffer)
-                elif not safe_partial_refresh(epd, disp_partial_fn, buffer, rect=None):
-                    log.warning("Clock daemon partial failed, switching to full refresh")
-                    partial_enabled = False
+                else:
                     epd.init()
                     epd.display(buffer)
-            else:
-                epd.init()
-                epd.display(buffer)
 
-            last_frame_img = img.copy()
-            display_tick_count += 1
-            tick_count += 1
+                last_frame_img = img.copy()
+                display_tick_count += 1
+                tick_count += 1
+            except Exception as e:
+                log.warning(f"Clock daemon tick failed: {e}")
+                tick_count += 1
+
             now_ts = time.time()
             sleep_s = max(0.1, interval_sec - (now_ts % interval_sec))
             time.sleep(sleep_s)
@@ -823,6 +896,20 @@ def main():
         help="Clock daemon refresh non-clock data every N minutes",
     )
     args = parser.parse_args()
+
+    require_ha_credentials = (not args.demo) and args.mode in ("full", "clock-daemon")
+    config_required = require_ha_credentials
+    config = _load_json("config.json", required=config_required)
+    secrets = _load_json("secrets.json", required=require_ha_credentials)
+    configure_runtime(config, secrets, require_secrets=require_ha_credentials)
+
+    if "--clock-interval-sec" not in sys.argv:
+        args.clock_interval_sec = CLOCK_DAEMON_INTERVAL_SEC
+    if "--clock-full-every" not in sys.argv:
+        args.clock_full_every = CLOCK_DAEMON_FULL_EVERY
+    if "--clock-data-every-min" not in sys.argv:
+        args.clock_data_every_min = CLOCK_DAEMON_DATA_EVERY_MIN
+
     ICON_ASSETS = IconAssets(args.icons_dir)
     args.clock_interval_sec = max(1, int(args.clock_interval_sec))
     args.clock_full_every = max(1, int(args.clock_full_every))

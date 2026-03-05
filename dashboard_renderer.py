@@ -307,8 +307,22 @@ def render_dashboard(
     y += 4
 
     rooms = data["rooms"]
+    if not rooms:
+        draw.text((16, y + 12), labels.get("no_rooms", "No rooms configured"), fill=0, font=fonts["tiny"])
+        draw_footer(
+            draw,
+            fonts,
+            now,
+            width=width,
+            height=height,
+            labels=labels,
+            footer_text_fn=footer_text_fn,
+            last_updated=last_updated,
+        )
+        return img
+
     available = height - y - 30
-    row_h = min(available // len(rooms), 54)
+    row_h = max(1, min(available // len(rooms), 54))
 
     for i, room in enumerate(rooms):
         ry = y + i * row_h
