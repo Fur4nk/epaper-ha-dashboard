@@ -124,7 +124,7 @@ def draw_footer(
     footer_text_fn,
     last_updated: datetime = None,
 ):
-    footer_top = height - 50
+    footer_top = height - 68
     if last_updated is not None:
         stamp = f"{labels.get('last_updated', 'Last updated')} {last_updated.strftime('%H:%M')}"
         draw.text((width - 16, footer_top - 14), stamp, fill=0, font=fonts["tiny"], anchor="ra")
@@ -133,7 +133,7 @@ def draw_footer(
     quote_font = fonts["weather_sub"]
     source_font = fonts["tiny"]
     max_w = width - 32
-    quote_lines = _wrap_text(draw, quote_raw, quote_font, max_w, max_lines=2)
+    quote_lines = _wrap_text(draw, quote_raw, quote_font, max_w, max_lines=3)
     source = _fit_text(draw, source_raw, source_font, max_w)
 
     quote_h = sum(_text_size(draw, ln, quote_font)[1] for ln in quote_lines if ln)

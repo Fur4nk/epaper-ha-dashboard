@@ -134,7 +134,7 @@ def build_dynamic_partial_rects(data: dict, header_h: int, width: int, height: i
                 y1 = y0 + row_h
                 rects.append((width - 144, y0, width, y1))
 
-    footer_top = height - 50
+    footer_top = height - 68
     if changed is None or changed.get("footer"):
         rects.append((width - 220, footer_top - 18, width - 12, footer_top - 2))
 
