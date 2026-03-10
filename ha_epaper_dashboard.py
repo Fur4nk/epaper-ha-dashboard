@@ -26,6 +26,7 @@ from dashboard_ha import fetch_all_data as fetch_all_data_from_ha
 from dashboard_epd import (
     first_callable,
     load_epd_driver,
+    partial_refresh_rects,
     safe_partial_refresh,
     send_to_epaper as epd_send_to_epaper,
 )
@@ -871,13 +872,15 @@ def run_clock_daemon(
                                 epd.display(buffer)
                                 did_display = True
                         else:
-                            # Conservative mode: avoid data partial updates when fullscreen partial is disabled.
-                            # On some panel/driver combinations rect partials are unstable and corrupt the frame.
-                            # To reduce full refresh frequency, skip refresh when non-clock data did not change.
                             if has_data_change:
-                                epd.init()
-                                epd.display(buffer)
-                                did_display = True
+                                partial_ok = partial_refresh_rects(epd, disp_partial_fn, buffer, data_rects)
+                                did_display = partial_ok
+                                if not partial_ok:
+                                    log.warning("Data rect partial refresh failed, switching to full refresh")
+                                    partial_enabled = False
+                                    epd.init()
+                                    epd.display(buffer)
+                                    did_display = True
                             else:
                                 log.info("No data change detected, skipping data-tick display refresh")
                     else:
