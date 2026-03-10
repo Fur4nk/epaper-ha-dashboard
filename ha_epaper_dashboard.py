@@ -835,6 +835,10 @@ def run_clock_daemon(
 
                     new_img = render(data, now=now, last_updated=last_data_updated_at)
                     data_rects = build_dynamic_partial_rects(data, HEADER_H, W, H, changed=changed)
+                    data_rects_epd = [
+                        _portrait_rect_to_epd_rect(rect, W, H)
+                        for rect in data_rects
+                    ]
                     if do_full or last_frame_img is None:
                         img = new_img
                     else:
@@ -873,7 +877,7 @@ def run_clock_daemon(
                                 did_display = True
                         else:
                             if has_data_change:
-                                partial_ok = partial_refresh_rects(epd, disp_partial_fn, buffer, data_rects)
+                                partial_ok = partial_refresh_rects(epd, disp_partial_fn, buffer, data_rects_epd)
                                 did_display = partial_ok
                                 if not partial_ok:
                                     log.warning("Data rect partial refresh failed, switching to full refresh")
