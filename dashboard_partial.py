@@ -80,19 +80,12 @@ def diff_snapshots(prev_snap, curr_snap):
         if idx >= len(prev_rooms) or idx >= len(curr_rooms) or prev_rooms[idx] != curr_rooms[idx]:
             room_changes.add(idx)
 
-    outdoor_changed = prev_snap.get("outdoor") != curr_snap.get("outdoor")
-    intraday_changed = prev_snap.get("intraday") != curr_snap.get("intraday")
-    forecast_changed = prev_snap.get("forecast") != curr_snap.get("forecast")
-    rooms_changed = bool(room_changes)
-    any_data_changed = outdoor_changed or intraday_changed or forecast_changed or rooms_changed
-
     return {
-        "outdoor": outdoor_changed,
-        "intraday": intraday_changed,
-        "forecast": forecast_changed,
+        "outdoor": prev_snap.get("outdoor") != curr_snap.get("outdoor"),
+        "intraday": prev_snap.get("intraday") != curr_snap.get("intraday"),
+        "forecast": prev_snap.get("forecast") != curr_snap.get("forecast"),
         "rooms": room_changes,
-        # Keep footer stable when nothing changed, so "Last updated" does not advance.
-        "footer": any_data_changed,
+        "footer": True,
     }
 
 
