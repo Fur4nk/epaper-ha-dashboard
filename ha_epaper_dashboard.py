@@ -768,6 +768,7 @@ def run_clock_daemon(
     display_tick_count = 0
     last_data_snapshot = None
     startup_data_ok = False
+    last_data_updated_at = None
     img = load_cached_full_image(cache_image)
     try:
         initial_data = demo_data() if demo else fetch_all_data()
@@ -775,6 +776,7 @@ def run_clock_daemon(
         img = render(initial_data, now=init_now, last_updated=init_now)
         last_data_snapshot = build_data_snapshot(initial_data, _to_float)
         startup_data_ok = True
+        last_data_updated_at = init_now
     except Exception as e:
         log.warning(f"Initial render failed, using cached image: {e}")
     last_frame_img = img.copy()
@@ -819,7 +821,6 @@ def run_clock_daemon(
 
                 if do_data:
                     data = demo_data() if demo else fetch_all_data()
-                    new_img = render(data, now=now, last_updated=now)
                     curr_snapshot = build_data_snapshot(data, _to_float)
                     changed = diff_snapshots(last_data_snapshot, curr_snapshot)
                     has_data_change = bool(
@@ -828,6 +829,10 @@ def run_clock_daemon(
                         or changed.get("forecast")
                         or changed.get("rooms")
                     )
+                    if has_data_change:
+                        last_data_updated_at = now
+
+                    new_img = render(data, now=now, last_updated=last_data_updated_at)
                     data_rects = build_dynamic_partial_rects(data, HEADER_H, W, H, changed=changed)
                     if do_full or last_frame_img is None:
                         img = new_img
