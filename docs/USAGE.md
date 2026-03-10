@@ -44,7 +44,7 @@ python3 ha_epaper_dashboard.py --mode clock-daemon --epd-lib-path ~/src/e-Paper/
 - `--cache-image <path>`: full image cache (default `/tmp/epaper_dashboard_full.png`).
 - `--clock-interval-sec <int>`
 - `--clock-data-every-min <int>`
-- `--clock-full-every <int>`
+- `--clock-full-every <int>` (display ticks, not minutes; alias: `--clock-full-every-ticks`)
 
 ## Refresh behavior summary
 
@@ -52,8 +52,9 @@ In `clock-daemon`:
 
 - Every tick (`clock_daemon_interval_sec`): evaluate what to update.
 - Every `clock_daemon_data_every_min`: fetch HA data and redraw dynamic regions.
-- Every `clock_daemon_full_every` display ticks: force full refresh to limit artifacts.
+- Every `clock_daemon_full_every_ticks` display ticks: force full refresh to limit artifacts.
 - If `show_clock` is `false`, clock-only redraws are skipped.
+- If `clock_partial_fullscreen` is `false`, data ticks avoid partial updates and refresh the panel only when non-clock data changed.
 
 ## Icons
 

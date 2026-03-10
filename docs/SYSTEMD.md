@@ -24,7 +24,7 @@ Create `/etc/default/epaper-dashboard`:
 APP_DIR=/custom/path/epaper-ha-dashboard
 EPD_LIB_PATH=/custom/path/e-Paper/RaspberryPi_JetsonNano/python/lib
 MODE=clock-daemon
-EXTRA_ARGS=--clock-data-every-min 10 --clock-full-every 120
+EXTRA_ARGS=--clock-data-every-min 10 --clock-full-every 120   # 120 display ticks, not minutes
 ```
 
 ## Logs and control

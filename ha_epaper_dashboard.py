@@ -26,7 +26,6 @@ from dashboard_ha import fetch_all_data as fetch_all_data_from_ha
 from dashboard_epd import (
     first_callable,
     load_epd_driver,
-    partial_refresh_rects,
     safe_partial_refresh,
     send_to_epaper as epd_send_to_epaper,
 )
@@ -450,6 +449,28 @@ def _to_float(v):
         return None
 
 
+def _portrait_rect_to_epd_rect(rect, portrait_w: int, portrait_h: int):
+    x0, y0, x1, y1 = rect
+    x0 = max(0, min(portrait_w - 1, int(x0)))
+    y0 = max(0, min(portrait_h - 1, int(y0)))
+    x1 = max(x0 + 1, min(portrait_w, int(x1)))
+    y1 = max(y0 + 1, min(portrait_h, int(y1)))
+
+    def _map_point(px: int, py: int):
+        # Image is rotated 90 degrees CCW before sending to the panel.
+        return py, (portrait_w - 1) - px
+
+    corners = [
+        _map_point(x0, y0),
+        _map_point(x1 - 1, y0),
+        _map_point(x0, y1 - 1),
+        _map_point(x1 - 1, y1 - 1),
+    ]
+    xs = [c[0] for c in corners]
+    ys = [c[1] for c in corners]
+    return min(xs), min(ys), max(xs) + 1, max(ys) + 1
+
+
 def fetch_all_data() -> dict:
     return fetch_all_data_from_ha(
         ha_url=HA_URL,
@@ -538,7 +559,15 @@ def configure_runtime(config: dict, secrets: dict, require_secrets: bool):
     CLOCK_PARTIAL_REFRESH = bool(config.get("clock_partial_refresh", True))
     CLOCK_PARTIAL_FULLSCREEN = bool(config.get("clock_partial_fullscreen", True))
     CLOCK_DAEMON_INTERVAL_SEC = _to_int(config.get("clock_daemon_interval_sec", 60), 60)
-    CLOCK_DAEMON_FULL_EVERY = _to_int(config.get("clock_daemon_full_every", 240), 240)
+    full_every_cfg = config.get("clock_daemon_full_every_ticks", None)
+    if full_every_cfg is None:
+        full_every_cfg = config.get("clock_daemon_full_every", 240)
+        if "clock_daemon_full_every" in config:
+            log.warning(
+                "config key 'clock_daemon_full_every' is deprecated; "
+                "use 'clock_daemon_full_every_ticks' (unit: display ticks, not minutes)"
+            )
+    CLOCK_DAEMON_FULL_EVERY = _to_int(full_every_cfg, 240)
     CLOCK_DAEMON_DATA_EVERY_MIN = _to_int(config.get("clock_daemon_data_every_min", 10), 10)
     SHOW_CLOCK = bool(config.get("show_clock", True))
 
@@ -733,6 +762,7 @@ def run_clock_daemon(
     full_every = max(1, int(full_every))
     data_every_min = max(1, int(data_every_min))
     data_every_ticks = max(1, int(round((data_every_min * 60) / interval_sec)))
+    clock_header_rect_epd = _portrait_rect_to_epd_rect((0, 0, W, HEADER_H), W, H)
 
     tick_count = 0
     display_tick_count = 0
@@ -790,6 +820,12 @@ def run_clock_daemon(
                     new_img = render(data, now=now, last_updated=now)
                     curr_snapshot = build_data_snapshot(data, _to_float)
                     changed = diff_snapshots(last_data_snapshot, curr_snapshot)
+                    has_data_change = bool(
+                        changed.get("outdoor")
+                        or changed.get("intraday")
+                        or changed.get("forecast")
+                        or changed.get("rooms")
+                    )
                     data_rects = build_dynamic_partial_rects(data, HEADER_H, W, H, changed=changed)
                     if do_full or last_frame_img is None:
                         img = new_img
@@ -818,14 +854,21 @@ def run_clock_daemon(
                     if do_data:
                         if partial_fullscreen:
                             partial_ok = safe_partial_refresh(epd, disp_partial_fn, buffer, rect=None)
+                            if not partial_ok:
+                                log.warning("Data partial refresh failed, switching to full refresh")
+                                partial_enabled = False
+                                epd.init()
+                                epd.display(buffer)
                         else:
-                            partial_ok = partial_refresh_rects(epd, disp_partial_fn, buffer, data_rects)
-                        if not partial_ok:
-                            log.warning("Data partial refresh failed, switching to full refresh")
-                            partial_enabled = False
-                            epd.init()
-                            epd.display(buffer)
-                    elif not safe_partial_refresh(epd, disp_partial_fn, buffer, rect=None):
+                            # Conservative mode: avoid data partial updates when fullscreen partial is disabled.
+                            # On some panel/driver combinations rect partials are unstable and corrupt the frame.
+                            # To reduce full refresh frequency, skip refresh when non-clock data did not change.
+                            if has_data_change:
+                                epd.init()
+                                epd.display(buffer)
+                            else:
+                                log.info("No data change detected, skipping data-tick display refresh")
+                    elif not safe_partial_refresh(epd, disp_partial_fn, buffer, rect=clock_header_rect_epd):
                         log.warning("Clock daemon partial failed, switching to full refresh")
                         partial_enabled = False
                         epd.init()
@@ -885,9 +928,11 @@ def main():
     )
     parser.add_argument(
         "--clock-full-every",
+        "--clock-full-every-ticks",
+        dest="clock_full_every",
         type=int,
         default=CLOCK_DAEMON_FULL_EVERY,
-        help="Clock daemon force full refresh every N ticks",
+        help="Clock daemon force full refresh every N display ticks (not minutes)",
     )
     parser.add_argument(
         "--clock-data-every-min",
@@ -905,7 +950,7 @@ def main():
 
     if "--clock-interval-sec" not in sys.argv:
         args.clock_interval_sec = CLOCK_DAEMON_INTERVAL_SEC
-    if "--clock-full-every" not in sys.argv:
+    if "--clock-full-every" not in sys.argv and "--clock-full-every-ticks" not in sys.argv:
         args.clock_full_every = CLOCK_DAEMON_FULL_EVERY
     if "--clock-data-every-min" not in sys.argv:
         args.clock_data_every_min = CLOCK_DAEMON_DATA_EVERY_MIN

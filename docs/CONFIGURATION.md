@@ -61,10 +61,11 @@ Room object fields:
 ### Clock daemon / refresh options
 
 - `clock_partial_refresh` (enable partial refresh where available)
-- `clock_partial_fullscreen` (`true` = fullscreen partial for data updates)
+- `clock_partial_fullscreen` (`true` = fullscreen partial for data updates, `false` = no partial on data updates; data ticks are refreshed with full update only when data changed, to reduce ghosting/fading)
 - `clock_daemon_interval_sec` (tick interval, default `60`)
 - `clock_daemon_data_every_min` (data refresh interval, default `10`)
-- `clock_daemon_full_every` (force full refresh every N display ticks)
+- `clock_daemon_full_every_ticks` (force full refresh every N display ticks, not minutes)
+- `clock_daemon_full_every` (deprecated alias of `clock_daemon_full_every_ticks`)
 
 ## Notes on HA forecast
 

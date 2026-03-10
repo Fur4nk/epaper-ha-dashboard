@@ -18,9 +18,9 @@
     "forecast_weekday_format": "abbr",
     "show_clock": true,
     "clock_partial_refresh": true,
-    "clock_partial_fullscreen": true,
+    "clock_partial_fullscreen": false,
     "clock_daemon_interval_sec": 60,
-    "clock_daemon_full_every": 240,
+    "clock_daemon_full_every_ticks": 240,
     "clock_daemon_data_every_min": 10,
     "rooms": [
         {"name": "Cucina",     "icon": "kitchen",    "temp": "sensor.temp_umi_cucina_temperature",     "hum": "sensor.temp_umi_cucina_humidity"},
