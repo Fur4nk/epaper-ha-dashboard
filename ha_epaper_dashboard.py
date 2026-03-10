@@ -767,14 +767,12 @@ def run_clock_daemon(
     tick_count = 0
     display_tick_count = 0
     last_data_snapshot = None
-    startup_data_ok = False
     img = load_cached_full_image(cache_image)
     try:
         initial_data = demo_data() if demo else fetch_all_data()
         init_now = datetime.now()
         img = render(initial_data, now=init_now, last_updated=init_now)
         last_data_snapshot = build_data_snapshot(initial_data, _to_float)
-        startup_data_ok = True
     except Exception as e:
         log.warning(f"Initial render failed, using cached image: {e}")
     last_frame_img = img.copy()
@@ -799,13 +797,13 @@ def run_clock_daemon(
     epd.display(startup_buffer)
     last_frame_img = img.copy()
     display_tick_count = 1
-    tick_count = 0
+    tick_count = 1
 
     try:
         while True:
             now = datetime.now()
             try:
-                do_data = (not startup_data_ok) or tick_count == 0 or (tick_count % data_every_ticks == 0)
+                do_data = tick_count == 0 or (tick_count % data_every_ticks == 0)
                 do_clock_tick = bool(SHOW_CLOCK and not do_data)
 
                 if not do_data and not do_clock_tick:
@@ -847,24 +845,20 @@ def run_clock_daemon(
                     except Exception as e:
                         log.warning(f"Failed to update cache image {cache_image}: {e}")
                 buffer = epd.getbuffer(img.rotate(90, expand=True))
-                did_display = False
 
                 if do_full:
                     epd.init()
                     epd.display(buffer)
-                    did_display = True
                 elif partial_enabled:
                     init_partial_fn()
                     if do_data:
                         if partial_fullscreen:
                             partial_ok = safe_partial_refresh(epd, disp_partial_fn, buffer, rect=None)
-                            did_display = partial_ok
                             if not partial_ok:
                                 log.warning("Data partial refresh failed, switching to full refresh")
                                 partial_enabled = False
                                 epd.init()
                                 epd.display(buffer)
-                                did_display = True
                         else:
                             # Conservative mode: avoid data partial updates when fullscreen partial is disabled.
                             # On some panel/driver combinations rect partials are unstable and corrupt the frame.
@@ -872,29 +866,19 @@ def run_clock_daemon(
                             if has_data_change:
                                 epd.init()
                                 epd.display(buffer)
-                                did_display = True
                             else:
                                 log.info("No data change detected, skipping data-tick display refresh")
-                    else:
-                        partial_ok = safe_partial_refresh(epd, disp_partial_fn, buffer, rect=clock_header_rect_epd)
-                        did_display = partial_ok
-                        if not partial_ok:
-                            log.warning("Clock daemon partial failed, switching to full refresh")
-                            partial_enabled = False
-                            epd.init()
-                            epd.display(buffer)
-                            did_display = True
+                    elif not safe_partial_refresh(epd, disp_partial_fn, buffer, rect=clock_header_rect_epd):
+                        log.warning("Clock daemon partial failed, switching to full refresh")
+                        partial_enabled = False
+                        epd.init()
+                        epd.display(buffer)
                 else:
                     epd.init()
                     epd.display(buffer)
-                    did_display = True
 
-                if do_data:
-                    startup_data_ok = True
-
-                if did_display:
-                    last_frame_img = img.copy()
-                    display_tick_count += 1
+                last_frame_img = img.copy()
+                display_tick_count += 1
                 tick_count += 1
             except Exception as e:
                 log.warning(f"Clock daemon tick failed: {e}")
