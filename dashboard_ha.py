@@ -142,6 +142,28 @@ def _merge_daypart_minmax(cached_entry, new_entry):
     return fresh or cached
 
 
+def _select_multiday_forecast(forecast: list, limit: int = 4):
+    if not isinstance(forecast, list):
+        return []
+    today = datetime.now().date()
+    selected = []
+    for item in forecast:
+        if not isinstance(item, dict):
+            continue
+        dt_str = item.get("datetime")
+        if dt_str:
+            try:
+                fc_dt = datetime.fromisoformat(str(dt_str).replace("Z", "+00:00"))
+                if fc_dt.date() == today:
+                    continue
+            except Exception:
+                pass
+        selected.append(item)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
 def _get_weather(
     ha_url: str,
     ha_token: str,
@@ -171,16 +193,16 @@ def _get_weather(
                     if isinstance(service_response, dict):
                         weather_data = service_response.get(weather_entity)
                         if isinstance(weather_data, dict) and "forecast" in weather_data:
-                            result["forecast"] = weather_data["forecast"][:4]
+                            result["forecast"] = _select_multiday_forecast(weather_data["forecast"])
                     if not result["forecast"]:
                         for val in svc.values():
                             if isinstance(val, dict) and "forecast" in val:
-                                result["forecast"] = val["forecast"][:4]
+                                result["forecast"] = _select_multiday_forecast(val["forecast"])
                                 break
                             if isinstance(val, dict):
                                 for inner in val.values():
                                     if isinstance(inner, dict) and "forecast" in inner:
-                                        result["forecast"] = inner["forecast"][:4]
+                                        result["forecast"] = _select_multiday_forecast(inner["forecast"])
                                         break
                                 if result["forecast"]:
                                     break
@@ -223,7 +245,7 @@ def _get_weather(
             result["aqi"] = attrs.get("aqi")
             result["pm25"] = attrs.get("pm25")
             if not result["forecast"]:
-                result["forecast"] = attrs.get("forecast", [])[:4]
+                result["forecast"] = _select_multiday_forecast(attrs.get("forecast", []))
         except Exception as e:
             log.warning(f"Failed to fetch weather: {e}")
     else:
