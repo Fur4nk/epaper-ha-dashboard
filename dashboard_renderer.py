@@ -124,7 +124,7 @@ def draw_footer(
     footer_text_fn,
     last_updated: datetime = None,
 ):
-    footer_top = height - 68
+    footer_top = height - 76
     if last_updated is not None:
         stamp = f"{labels.get('last_updated', 'Last updated')} {last_updated.strftime('%H:%M')}"
         draw.text((width - 16, footer_top - 14), stamp, fill=0, font=fonts["tiny"], anchor="ra")

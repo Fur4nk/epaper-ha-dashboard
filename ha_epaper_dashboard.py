@@ -140,7 +140,7 @@ def load_fonts() -> dict:
             "temp_big":    ImageFont.truetype(mono, 32),
             "temp_room":   ImageFont.truetype(mono, 24),
             "hum_room":    ImageFont.truetype(mono, 16),
-            "weather_sub": ImageFont.truetype(reg, 14),
+            "weather_sub": ImageFont.truetype(reg, 15),
             "fc_day":      ImageFont.truetype(bold, 13),
             "fc_temp":     ImageFont.truetype(mono, 12),
             "tiny":        ImageFont.truetype(reg, 10),
