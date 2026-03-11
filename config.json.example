@@ -17,6 +17,7 @@
     "header_month_format": "full",
     "forecast_weekday_format": "abbr",
     "show_clock": true,
+    "footer_debug_ticks": false,
     "clock_partial_refresh": true,
     "clock_partial_fullscreen": false,
     "clock_daemon_interval_sec": 60,

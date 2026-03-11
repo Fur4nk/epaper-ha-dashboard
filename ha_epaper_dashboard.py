@@ -524,6 +524,7 @@ def configure_runtime(config: dict, secrets: dict, require_secrets: bool):
     global QUOTE_API_URL, QUOTE_CACHE_FILE, DAYPARTS_CACHE_FILE, HEADER_WEEKDAY_FORMAT, HEADER_MONTH_FORMAT
     global FORECAST_WEEKDAY_FORMAT, LOCALE, HEADER_TITLE, CLOCK_PARTIAL_REFRESH, CLOCK_PARTIAL_FULLSCREEN
     global CLOCK_DAEMON_INTERVAL_SEC, CLOCK_DAEMON_FULL_EVERY, CLOCK_DAEMON_DATA_EVERY_MIN, SHOW_CLOCK
+    global FOOTER_DEBUG_TICKS
     global WEEKDAYS_ABBR, WEEKDAYS_FULL, MONTHS_ABBR, MONTHS_FULL, INTRADAY_LABELS, CONDITION_LABELS, LABELS
     global FALLBACK_QUOTE
 
@@ -570,6 +571,7 @@ def configure_runtime(config: dict, secrets: dict, require_secrets: bool):
     CLOCK_DAEMON_FULL_EVERY = _to_int(full_every_cfg, 240)
     CLOCK_DAEMON_DATA_EVERY_MIN = _to_int(config.get("clock_daemon_data_every_min", 10), 10)
     SHOW_CLOCK = bool(config.get("show_clock", True))
+    FOOTER_DEBUG_TICKS = bool(config.get("footer_debug_ticks", False))
 
     if HEADER_WEEKDAY_FORMAT not in ("full", "abbr"):
         log.warning("Invalid header_weekday_format in config.json, using 'full'")
@@ -689,7 +691,12 @@ def load_cached_full_image(cache_image: str) -> Image.Image:
     return img
 
 
-def render(data: dict, now: datetime = None, last_updated: datetime = None) -> Image.Image:
+def render(
+    data: dict,
+    now: datetime = None,
+    last_updated: datetime = None,
+    footer_debug_text: str = "",
+) -> Image.Image:
     now = now or datetime.now()
     fonts = load_fonts()
     return render_dashboard(
@@ -715,6 +722,7 @@ def render(data: dict, now: datetime = None, last_updated: datetime = None) -> I
         header_title=HEADER_TITLE,
         footer_text_fn=footer_text,
         last_updated=last_updated,
+        footer_debug_text=footer_debug_text,
     )
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
@@ -766,12 +774,14 @@ def run_clock_daemon(
 
     tick_count = 0
     display_tick_count = 0
+    ticks_since_full = 0
     last_data_snapshot = None
     img = load_cached_full_image(cache_image)
     try:
         initial_data = demo_data() if demo else fetch_all_data()
         init_now = datetime.now()
-        img = render(initial_data, now=init_now, last_updated=init_now)
+        startup_debug_text = "0" if FOOTER_DEBUG_TICKS else ""
+        img = render(initial_data, now=init_now, last_updated=init_now, footer_debug_text=startup_debug_text)
         last_data_snapshot = build_data_snapshot(initial_data, _to_float)
     except Exception as e:
         log.warning(f"Initial render failed, using cached image: {e}")
@@ -814,10 +824,12 @@ def run_clock_daemon(
                     continue
 
                 do_full = display_tick_count == 0 or (display_tick_count % full_every == 0)
+                debug_tick_value = 0 if do_full else (ticks_since_full + 1)
+                debug_text = str(debug_tick_value) if FOOTER_DEBUG_TICKS else ""
 
                 if do_data:
                     data = demo_data() if demo else fetch_all_data()
-                    new_img = render(data, now=now, last_updated=now)
+                    new_img = render(data, now=now, last_updated=now, footer_debug_text=debug_text)
                     curr_snapshot = build_data_snapshot(data, _to_float)
                     changed = diff_snapshots(last_data_snapshot, curr_snapshot)
                     has_data_change = bool(
@@ -838,6 +850,10 @@ def run_clock_daemon(
                 else:
                     img = last_frame_img.copy()
                     update_clock_header(img, now=now)
+                    if FOOTER_DEBUG_TICKS:
+                        draw = ImageDraw.Draw(img)
+                        fonts = load_fonts()
+                        draw.text((W - 3, H - 1), debug_text, fill=0, font=fonts["tiny"], anchor="rd")
 
                 if do_full:
                     try:
@@ -878,6 +894,7 @@ def run_clock_daemon(
                     epd.display(buffer)
 
                 last_frame_img = img.copy()
+                ticks_since_full = 0 if do_full else debug_tick_value
                 display_tick_count += 1
                 tick_count += 1
             except Exception as e:
@@ -987,7 +1004,8 @@ def main():
 
         log.info("Rendering...")
         now = datetime.now()
-        img = render(data, now=now, last_updated=now)
+        debug_text = "0" if FOOTER_DEBUG_TICKS else ""
+        img = render(data, now=now, last_updated=now, footer_debug_text=debug_text)
         try:
             img.save(args.cache_image, "PNG")
         except Exception as e:

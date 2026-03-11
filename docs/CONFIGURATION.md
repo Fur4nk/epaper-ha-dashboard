@@ -57,6 +57,7 @@ Room object fields:
 - `quote_api_url` (default `https://zenquotes.io/api/today`)
 - `quote_cache_file` (default `/tmp/epaper_daily_quote.json`)
 - `footer_quote` / `footer_source` (manual fallback)
+- `footer_debug_ticks` (`true` to show a small debug counter at bottom-right; resets to `0` on each full refresh)
 
 ### Clock daemon / refresh options
 
