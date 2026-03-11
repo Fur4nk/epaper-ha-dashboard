@@ -123,6 +123,7 @@ def draw_footer(
     labels: dict,
     footer_text_fn,
     last_updated: datetime = None,
+    footer_debug_text: str = "",
 ):
     footer_top = height - 76
     if last_updated is not None:
@@ -136,10 +137,9 @@ def draw_footer(
     quote_lines = _wrap_text(draw, quote_raw, quote_font, max_w, max_lines=3)
     source = _fit_text(draw, source_raw, source_font, max_w)
 
-    quote_h = sum(_text_size(draw, ln, quote_font)[1] for ln in quote_lines if ln)
-    quote_gaps = max(0, len([ln for ln in quote_lines if ln]) - 1) * 2
     source_h = _text_size(draw, source, source_font)[1] if source else 0
-    y = height - (quote_h + quote_gaps + source_h + 8)
+    y = footer_top + 6
+    source_y = height - source_h - 4 if source else None
 
     for ln in quote_lines:
         if not ln:
@@ -149,7 +149,9 @@ def draw_footer(
         y += h + 2
     if source:
         w, _ = _text_size(draw, source, source_font)
-        draw.text(((width - w) // 2, y + 2), source, fill=0, font=source_font)
+        draw.text(((width - w) // 2, source_y), source, fill=0, font=source_font)
+    if footer_debug_text:
+        draw.text((width - 3, height - 1), footer_debug_text, fill=0, font=fonts["tiny"], anchor="rd")
 
 
 def render_dashboard(
@@ -176,6 +178,7 @@ def render_dashboard(
     header_title: str,
     footer_text_fn,
     last_updated: datetime = None,
+    footer_debug_text: str = "",
 ) -> Image.Image:
     img = Image.new("1", (width, height), 255)
     draw = ImageDraw.Draw(img)
@@ -318,6 +321,7 @@ def render_dashboard(
             labels=labels,
             footer_text_fn=footer_text_fn,
             last_updated=last_updated,
+            footer_debug_text=footer_debug_text,
         )
         return img
 
@@ -370,5 +374,6 @@ def render_dashboard(
         labels=labels,
         footer_text_fn=footer_text_fn,
         last_updated=last_updated,
+        footer_debug_text=footer_debug_text,
     )
     return img
