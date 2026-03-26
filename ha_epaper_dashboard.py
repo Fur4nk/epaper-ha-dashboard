@@ -776,6 +776,7 @@ def run_clock_daemon(
     display_tick_count = 0
     ticks_since_full = 0
     last_data_snapshot = None
+    last_date = datetime.now().date()
     img = load_cached_full_image(cache_image)
     try:
         initial_data = demo_data() if demo else fetch_all_data()
@@ -785,6 +786,7 @@ def run_clock_daemon(
         last_data_snapshot = build_data_snapshot(initial_data, _to_float)
     except Exception as e:
         log.warning(f"Initial render failed, using cached image: {e}")
+        update_clock_header(img)
     last_frame_img = img.copy()
     if SHOW_CLOCK:
         log.info(
@@ -813,7 +815,11 @@ def run_clock_daemon(
         while True:
             now = datetime.now()
             try:
-                do_data = tick_count == 0 or (tick_count % data_every_ticks == 0)
+                day_changed = now.date() != last_date
+                do_data = tick_count == 0 or (tick_count % data_every_ticks == 0) or day_changed
+                if day_changed:
+                    log.info("Day changed, forcing data refresh")
+                    last_date = now.date()
                 do_clock_tick = bool(SHOW_CLOCK and not do_data)
 
                 if not do_data and not do_clock_tick:
@@ -823,7 +829,7 @@ def run_clock_daemon(
                     time.sleep(sleep_s)
                     continue
 
-                do_full = display_tick_count == 0 or (display_tick_count % full_every == 0)
+                do_full = display_tick_count == 0 or (display_tick_count % full_every == 0) or day_changed
                 debug_tick_value = 0 if do_full else (ticks_since_full + 1)
                 debug_text = str(debug_tick_value) if FOOTER_DEBUG_TICKS else ""
 
