@@ -1,7 +1,5 @@
 # e-Paper HA Dashboard
 
-100% vibe-coded - 100% manually tested
-
 Portrait dashboard for Waveshare 7.5" V2 e-Paper (800x480) driven by Home Assistant.
 It shows outdoor weather, intraday + multiday forecast, indoor room temperature/humidity, and a daily quote.
 
