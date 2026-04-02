@@ -174,13 +174,14 @@ def _get_weather(
     outdoor_aqi: str,
     outdoor_pm25: str,
     sun_entity: str,
+    weather_alert_entity: str,
     dayparts_cache_file: str,
     log,
 ) -> dict:
     result = {"condition": "unknown", "temperature": None, "humidity": None,
               "wind_speed": None, "uv_index": None, "aqi": None, "pm25": None,
               "sunrise_time": None, "sunset_time": None,
-              "forecast": [], "dayparts": {}}
+              "forecast": [], "dayparts": {}, "alert": None}
     if weather_entity:
         try:
             r = requests.post(f"{ha_url}/api/services/weather/get_forecasts?return_response",
@@ -251,6 +252,28 @@ def _get_weather(
     else:
         log.warning("weather_entity is empty in config.json")
 
+    # Alert fetching
+    if weather_alert_entity:
+        try:
+            r = requests.get(f"{ha_url}/api/states/{weather_alert_entity}", headers=_ha_headers(ha_token), timeout=10)
+            if r.ok:
+                data = r.json()
+                state = data.get("state")
+                log.info(f"Alert entity {weather_alert_entity} state: {state}")
+                if state == "on":
+                    attrs = data.get("attributes", {})
+                    result["alert"] = {
+                        "event": attrs.get("event", "Weather Alert"),
+                        "severity": attrs.get("severity", "Moderate"),
+                        "headline": attrs.get("headline", ""),
+                        "onset": attrs.get("onset"),
+                        "expires": attrs.get("expires"),
+                        "level": attrs.get("awareness_level", ""),
+                        "type": attrs.get("awareness_type", "")
+                    }
+        except Exception as e:
+            log.warning(f"Failed to fetch alerts: {e}")
+
     out_t = _get_state(ha_url, ha_token, outdoor_temp, log)
     out_h = _get_state(ha_url, ha_token, outdoor_hum, log)
     out_uv = _get_state(ha_url, ha_token, outdoor_uv, log)
@@ -290,6 +313,7 @@ def fetch_all_data(
     outdoor_aqi: str,
     outdoor_pm25: str,
     sun_entity: str,
+    weather_alert_entity: str,
     dayparts_cache_file: str,
     log,
 ) -> dict:
@@ -317,6 +341,7 @@ def fetch_all_data(
             outdoor_aqi,
             outdoor_pm25,
             sun_entity,
+            weather_alert_entity,
             dayparts_cache_file,
             log,
         ),

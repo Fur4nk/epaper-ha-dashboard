@@ -212,7 +212,7 @@ def render_dashboard(
     y += 12
 
     row_y = y
-    row_h = 82
+    row_h = 88
     cond_text = condition_labels.get(cond, cond.replace("_", " ").title())
 
     left_x = 16
@@ -248,6 +248,22 @@ def render_dashboard(
         uv_line = _fit_text(draw, uv_line, fonts["info"], split_x - info_x - 10)
         draw.text((info_x, row_y + 53), uv_line, fill=0, font=fonts["info"])
 
+    # Alert display
+    alert = weather.get("alert")
+    if alert:
+        alert_text = alert.get("event", "Alert")
+        # Draw alert icon starting from left_x
+        tx, ty = left_x + 6, row_y + 82
+        alert_icon_ok = icon_assets.draw(img, "weather", "alert", tx, ty, 16) if icon_assets else False
+        if not alert_icon_ok:
+            # Fallback to manual triangle
+            draw.polygon([(tx-6, ty+5), (tx, ty-5), (tx+6, ty+5)], outline=0, fill=0)
+            draw.text((tx-1, ty-4), "!", fill=255, font=fonts["tiny"])
+        
+        # Alert text with more space
+        alert_text = _fit_text(draw, alert_text.upper(), fonts["tiny"], split_x - left_x - 18)
+        draw.text((left_x + 16, ty - 8), alert_text, fill=0, font=fonts["tiny"])
+
     sep_x = split_x - 8
     sep_y0 = row_y + 8
     sep_y1 = row_y + row_h - 8
@@ -272,7 +288,7 @@ def render_dashboard(
 
     forecast = weather.get("forecast", [])
     if forecast:
-        y += 2
+        y += 4
         x0, x1 = 8, width - 8
         draw.line([(x0, y), (x1, y)], fill=0, width=1)
         y += 10
@@ -293,6 +309,22 @@ def render_dashboard(
             fc_icon_ok = icon_assets.draw_weather(img, fc_cond, fx, y + 38, 46) if icon_assets else False
             if not fc_icon_ok:
                 icons_cls.weather(draw, fx, y + 38, fc_cond, r=23)
+
+            # Alert indicator for forecast
+            alert = weather.get("alert")
+            if alert and alert.get("onset") and alert.get("expires"):
+                try:
+                    a_on = datetime.fromisoformat(alert["onset"].replace("Z", "+00:00"))
+                    a_ex = datetime.fromisoformat(alert["expires"].replace("Z", "+00:00"))
+                    if a_on.date() <= fc_date.date() <= a_ex.date():
+                        tx, ty = fx + 22, y + 32
+                        alert_icon_ok = icon_assets.draw(img, "weather", "alert-circle", tx, ty, 18) if icon_assets else False
+                        if not alert_icon_ok:
+                            draw.ellipse([(tx-7, ty-7), (tx+7, ty+7)], fill=0)
+                            draw.text((tx, ty-6), "!", fill=255, font=fonts["tiny"], anchor="mt")
+                except Exception:
+                    pass
+
             t_hi_v = fc.get("temperature")
             t_lo_v = fc.get("templow")
             t_hi = f"{int(round(float(t_hi_v)))}" if t_hi_v not in (None, "—") else "—"
