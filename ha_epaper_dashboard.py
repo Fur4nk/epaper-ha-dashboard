@@ -130,21 +130,21 @@ def load_fonts() -> dict:
         bold = os.path.join(FONT_DIR, "DejaVuSans-Bold.ttf")
         mono = os.path.join(FONT_DIR, "DejaVuSansMono-Bold.ttf")
         return {
-            "title":       ImageFont.truetype(bold, 31),
-            "time":        ImageFont.truetype(mono, 31),
-            "date":        ImageFont.truetype(reg, 15),
-            "date_large":  ImageFont.truetype(bold, 17),
-            "section":     ImageFont.truetype(bold, 14),
-            "room_name":   ImageFont.truetype(bold, 20),
-            "temp_outdoor": ImageFont.truetype(mono, 41),
-            "temp_big":    ImageFont.truetype(mono, 33),
-            "temp_room":   ImageFont.truetype(mono, 25),
-            "hum_room":    ImageFont.truetype(mono, 17),
-            "weather_sub": ImageFont.truetype(reg, 16),
-            "fc_day":      ImageFont.truetype(bold, 14),
-            "fc_temp":     ImageFont.truetype(mono, 13),
-            "tiny":        ImageFont.truetype(reg, 11),
-            "col_hdr":     ImageFont.truetype(bold, 12),
+            "title":       ImageFont.truetype(bold, 32),
+            "time":        ImageFont.truetype(mono, 32),
+            "date":        ImageFont.truetype(reg, 16),
+            "date_large":  ImageFont.truetype(bold, 18),
+            "section":     ImageFont.truetype(bold, 15),
+            "room_name":   ImageFont.truetype(bold, 21),
+            "temp_outdoor": ImageFont.truetype(mono, 42),
+            "temp_big":    ImageFont.truetype(mono, 34),
+            "temp_room":   ImageFont.truetype(mono, 26),
+            "hum_room":    ImageFont.truetype(mono, 18),
+            "weather_sub": ImageFont.truetype(reg, 17),
+            "fc_day":      ImageFont.truetype(bold, 15),
+            "fc_temp":     ImageFont.truetype(mono, 14),
+            "tiny":        ImageFont.truetype(reg, 12),
+            "col_hdr":     ImageFont.truetype(bold, 13),
         }
     except OSError:
         log.warning("DejaVu fonts not found, using default")

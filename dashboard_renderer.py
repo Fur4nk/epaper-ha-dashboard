@@ -258,9 +258,9 @@ def render_dashboard(
         e_cond = entry.get("condition", cond) if isinstance(entry, dict) else cond
         mm_txt = f"{float(t_min):.0f}°/{float(t_max):.0f}°" if t_min is not None and t_max is not None else "—°/—°"
         draw.text((fx, row_y + 2), label, fill=0, font=fonts["fc_day"], anchor="mt")
-        intraday_icon_ok = icon_assets.draw_weather(img, e_cond, fx, row_y + 35, 36) if icon_assets else False
+        intraday_icon_ok = icon_assets.draw_weather(img, e_cond, fx, row_y + 35, 40) if icon_assets else False
         if not intraday_icon_ok:
-            icons_cls.weather(draw, fx, row_y + 35, e_cond, r=18)
+            icons_cls.weather(draw, fx, row_y + 35, e_cond, r=20)
         draw.text((fx, row_y + 53), mm_txt, fill=0, font=fonts["fc_temp"], anchor="mt")
 
     y += row_h
@@ -285,9 +285,9 @@ def render_dashboard(
                 dl = f"+{i+1}"
             draw.text((fx, y), dl, fill=0, font=fonts["fc_day"], anchor="mt")
             fc_cond = fc.get("condition", "unknown")
-            fc_icon_ok = icon_assets.draw_weather(img, fc_cond, fx, y + 33, 42) if icon_assets else False
+            fc_icon_ok = icon_assets.draw_weather(img, fc_cond, fx, y + 33, 46) if icon_assets else False
             if not fc_icon_ok:
-                icons_cls.weather(draw, fx, y + 33, fc_cond, r=21)
+                icons_cls.weather(draw, fx, y + 33, fc_cond, r=23)
             t_hi_v = fc.get("temperature")
             t_lo_v = fc.get("templow")
             t_hi = f"{int(round(float(t_hi_v)))}" if t_hi_v not in (None, "—") else "—"
