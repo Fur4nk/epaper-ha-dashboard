@@ -144,7 +144,7 @@ def load_fonts() -> dict:
             "fc_day":      ImageFont.truetype(bold, 15),
             "fc_temp":     ImageFont.truetype(mono, 14),
             "tiny":        ImageFont.truetype(reg, 12),
-            "info":        ImageFont.truetype(reg, 10),
+            "info":        ImageFont.truetype(reg, 11),
             "col_hdr":     ImageFont.truetype(bold, 13),
         }
     except OSError:
