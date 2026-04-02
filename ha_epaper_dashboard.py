@@ -144,13 +144,14 @@ def load_fonts() -> dict:
             "fc_day":      ImageFont.truetype(bold, 15),
             "fc_temp":     ImageFont.truetype(mono, 14),
             "tiny":        ImageFont.truetype(reg, 12),
+            "info":        ImageFont.truetype(reg, 10),
             "col_hdr":     ImageFont.truetype(bold, 13),
         }
     except OSError:
         log.warning("DejaVu fonts not found, using default")
         d = ImageFont.load_default()
         return {k: d for k in ["title","time","date","date_large","section","room_name","temp_outdoor","temp_big",
-            "temp_room","hum_room","weather_sub","fc_day","fc_temp","tiny","col_hdr"]}
+            "temp_room","hum_room","weather_sub","fc_day","fc_temp","tiny","info","col_hdr"]}
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  ICON DRAWING — clean vector-style for 1-bit e-paper                     ║

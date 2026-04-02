@@ -216,20 +216,20 @@ def render_dashboard(
     cond_text = condition_labels.get(cond, cond.replace("_", " ").title())
 
     left_x = 16
-    split_x = 190
+    split_x = 215
     temp_text = f"{int(round(float(out_temp)))}°" if out_temp is not None else "—°"
     draw.text((left_x, row_y + 15), temp_text, fill=0, font=fonts["temp_outdoor"])
     info_x = left_x + 76
-    cond_text = _fit_text(draw, cond_text, fonts["tiny"], split_x - info_x - 12)
-    draw.text((info_x, row_y + 13), cond_text, fill=0, font=fonts["tiny"])
-    label_w = 18
-    draw.text((info_x, row_y + 27), labels.get("humidity_short", "Hu"), fill=0, font=fonts["tiny"])
+    cond_text = _fit_text(draw, cond_text, fonts["info"], split_x - info_x - 12)
+    draw.text((info_x, row_y + 13), cond_text, fill=0, font=fonts["info"])
+    label_w = 24
+    draw.text((info_x, row_y + 27), labels.get("humidity_short", "Hu"), fill=0, font=fonts["info"])
     draw.text((info_x + label_w, row_y + 27),
-              f"{out_hum:.0f}%" if out_hum is not None else "--%", fill=0, font=fonts["tiny"])
+              f"{out_hum:.0f}%" if out_hum is not None else "--%", fill=0, font=fonts["info"])
     wind_x = info_x + 2
-    draw.text((wind_x, row_y + 40), labels.get("wind_short", "Wi"), fill=0, font=fonts["tiny"])
+    draw.text((wind_x, row_y + 40), labels.get("wind_short", "Wi"), fill=0, font=fonts["info"])
     draw.text((wind_x + label_w, row_y + 40),
-              f"{wind:.0f} km/h" if wind is not None else "-- km/h", fill=0, font=fonts["tiny"])
+              f"{wind:.0f} km/h" if wind is not None else "-- km/h", fill=0, font=fonts["info"])
 
     if uv is not None:
         uv_value = float(uv)
@@ -240,8 +240,8 @@ def render_dashboard(
         else:
             uv_level = "(high)"
         uv_line = f"UV {uv_value:.1f} {uv_level}"
-        uv_line = _fit_text(draw, uv_line, fonts["tiny"], split_x - info_x - 10)
-        draw.text((info_x, row_y + 53), uv_line, fill=0, font=fonts["tiny"])
+        uv_line = _fit_text(draw, uv_line, fonts["info"], split_x - info_x - 10)
+        draw.text((info_x, row_y + 53), uv_line, fill=0, font=fonts["info"])
 
     sep_x = split_x - 8
     sep_y0 = row_y + 8
