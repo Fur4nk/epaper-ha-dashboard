@@ -21,6 +21,7 @@ def build_data_snapshot(data: dict, to_float):
     weather = data.get("weather", {}) if isinstance(data, dict) else {}
     dayparts = weather.get("dayparts", {}) if isinstance(weather, dict) else {}
     forecast = weather.get("forecast", []) if isinstance(weather, dict) else []
+    alerts = weather.get("alerts", []) if isinstance(weather, dict) else []
     alert = weather.get("alert", {}) if isinstance(weather, dict) else {}
     rooms = data.get("rooms", []) if isinstance(data, dict) else []
 
@@ -32,14 +33,19 @@ def build_data_snapshot(data: dict, to_float):
         str(weather.get("condition", "unknown")),
     )
 
-    alert_key = (
-        str(alert.get("event", "")),
-        str(alert.get("severity", "")),
-        str(alert.get("onset", "")),
-        str(alert.get("expires", "")),
-        str(alert.get("level", "")),
-        str(alert.get("type", "")),
-    ) if isinstance(alert, dict) and alert else None
+    normalized_alerts = alerts if isinstance(alerts, list) and alerts else ([alert] if isinstance(alert, dict) and alert else [])
+    alert_key = tuple(
+        (
+            str(item.get("event", "")),
+            str(item.get("severity", "")),
+            str(item.get("onset", "")),
+            str(item.get("expires", "")),
+            str(item.get("level", "")),
+            str(item.get("type", "")),
+        )
+        for item in normalized_alerts
+        if isinstance(item, dict)
+    ) or None
 
     intraday = []
     for key in ("morning", "afternoon", "evening"):

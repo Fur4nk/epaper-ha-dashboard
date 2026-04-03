@@ -514,12 +514,31 @@ def demo_data() -> dict:
                 {"datetime": "2026-04-05", "condition": "snowy",        "temperature": 4,  "templow": -1},
                 {"datetime": "2026-04-06", "condition": "rainy",        "temperature": 8,  "templow": 4},
             ],
+            "alerts": [
+                {
+                    "event": "Yellow Wind Warning",
+                    "severity": "Yellow",
+                    "headline": "Yellow Wind Warning for Italy",
+                    "onset": "2026-04-02T10:00:00+02:00",
+                    "expires": "2026-04-03T23:59:59+02:00",
+                    "type": "wind",
+                },
+                {
+                    "event": "Orange Rain Warning",
+                    "severity": "Orange",
+                    "headline": "Orange Rain Warning for Italy",
+                    "onset": "2026-04-03T00:00:00+02:00",
+                    "expires": "2026-04-04T12:00:00+02:00",
+                    "type": "rain",
+                },
+            ],
             "alert": {
-                "event": "Yellow Wind Warning",
-                "severity": "Moderate",
-                "headline": "Yellow Wind Warning for Italy",
-                "onset": "2026-04-02T10:00:00+02:00",
-                "expires": "2026-04-03T23:59:59+02:00",
+                "event": "Orange Rain Warning",
+                "severity": "Orange",
+                "headline": "Orange Rain Warning for Italy",
+                "onset": "2026-04-03T00:00:00+02:00",
+                "expires": "2026-04-04T12:00:00+02:00",
+                "type": "rain",
             }
         },
     }
