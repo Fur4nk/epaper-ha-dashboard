@@ -25,6 +25,18 @@ def _fmt_next_sun_time(dt_str: str):
         return None
 
 
+def _parse_local_datetime(dt_str: str):
+    if not dt_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(dt_str).replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if dt.tzinfo is not None:
+        return dt.astimezone()
+    return dt
+
+
 def _get_state(ha_url: str, ha_token: str, entity_id: str, log):
     if not entity_id:
         return None
@@ -57,9 +69,8 @@ def _extract_dayparts_from_hourly(hourly_forecast: list):
         cond = item.get("condition", "unknown")
         if dt_str is None or temp is None:
             continue
-        try:
-            dt = datetime.fromisoformat(str(dt_str).replace("Z", "+00:00"))
-        except Exception:
+        dt = _parse_local_datetime(dt_str)
+        if dt is None:
             continue
         if dt.date() != today:
             continue
@@ -152,16 +163,110 @@ def _select_multiday_forecast(forecast: list, limit: int = 4):
             continue
         dt_str = item.get("datetime")
         if dt_str:
-            try:
-                fc_dt = datetime.fromisoformat(str(dt_str).replace("Z", "+00:00"))
-                if fc_dt.date() == today:
-                    continue
-            except Exception:
-                pass
+            fc_dt = _parse_local_datetime(dt_str)
+            if fc_dt is not None and fc_dt.date() == today:
+                continue
         selected.append(item)
         if len(selected) >= limit:
             break
     return selected
+
+
+def _parse_alert_datetime(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _severity_rank(*values):
+    for value in values:
+        token = str(value or "").strip().lower()
+        if not token:
+            continue
+        if token in ("red", "extreme", "warning", "level4", "4"):
+            return 4
+        if token in ("orange", "severe", "major", "level3", "3"):
+            return 3
+        if token in ("yellow", "moderate", "level2", "2"):
+            return 2
+        if token in ("minor", "level1", "1"):
+            return 1
+    return 0
+
+
+def _normalize_alert_item(item):
+    if not isinstance(item, dict):
+        return None
+    event = str(item.get("event") or item.get("title") or item.get("name") or "").strip()
+    headline = str(item.get("headline") or item.get("description") or "").strip()
+    severity = str(item.get("severity") or item.get("awareness_level") or item.get("level") or "").strip()
+    onset = item.get("onset") or item.get("effective") or item.get("start")
+    expires = item.get("expires") or item.get("ends") or item.get("end")
+    alert_type = str(item.get("awareness_type") or item.get("type") or "").strip()
+    if not any((event, headline, severity, onset, expires, alert_type)):
+        return None
+    if not event:
+        event = headline or "Weather Alert"
+    return {
+        "event": event,
+        "severity": severity,
+        "headline": headline,
+        "onset": onset,
+        "expires": expires,
+        "level": str(item.get("awareness_level", "")).strip(),
+        "type": alert_type,
+        "severity_rank": _severity_rank(severity, item.get("awareness_level")),
+    }
+
+
+def _normalize_alerts_from_entity(state: str, attrs: dict):
+    attrs = attrs if isinstance(attrs, dict) else {}
+    alerts = []
+    for key in ("alerts", "entries", "warnings", "features"):
+        raw_items = attrs.get(key)
+        if isinstance(raw_items, list):
+            for item in raw_items:
+                normalized = _normalize_alert_item(item)
+                if normalized:
+                    alerts.append(normalized)
+    if not alerts and state not in ("off", "unavailable", "unknown", None):
+        normalized = _normalize_alert_item(attrs)
+        if normalized:
+            alerts.append(normalized)
+
+    deduped = []
+    seen = set()
+    for alert in alerts:
+        key = (
+            alert.get("event", ""),
+            alert.get("severity", ""),
+            alert.get("onset", ""),
+            alert.get("expires", ""),
+            alert.get("type", ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(alert)
+
+    def _sort_key(alert):
+        onset_dt = _parse_alert_datetime(alert.get("onset"))
+        expires_dt = _parse_alert_datetime(alert.get("expires"))
+        onset_key = onset_dt.timestamp() if onset_dt else float("inf")
+        expires_key = expires_dt.timestamp() if expires_dt else float("inf")
+        return (-int(alert.get("severity_rank", 0)), onset_key, expires_key, alert.get("event", ""))
+
+    deduped.sort(key=_sort_key)
+    return deduped
+
+
+def _primary_alert(alerts):
+    if isinstance(alerts, list) and alerts:
+        return alerts[0]
+    return None
 
 
 def _get_weather(
@@ -174,13 +279,14 @@ def _get_weather(
     outdoor_aqi: str,
     outdoor_pm25: str,
     sun_entity: str,
+    weather_alert_entity: str,
     dayparts_cache_file: str,
     log,
 ) -> dict:
     result = {"condition": "unknown", "temperature": None, "humidity": None,
               "wind_speed": None, "uv_index": None, "aqi": None, "pm25": None,
               "sunrise_time": None, "sunset_time": None,
-              "forecast": [], "dayparts": {}}
+              "forecast": [], "dayparts": {}, "alert": None, "alerts": []}
     if weather_entity:
         try:
             r = requests.post(f"{ha_url}/api/services/weather/get_forecasts?return_response",
@@ -251,6 +357,20 @@ def _get_weather(
     else:
         log.warning("weather_entity is empty in config.json")
 
+    # Alert fetching
+    if weather_alert_entity:
+        try:
+            r = requests.get(f"{ha_url}/api/states/{weather_alert_entity}", headers=_ha_headers(ha_token), timeout=10)
+            if r.ok:
+                data = r.json()
+                state = data.get("state")
+                log.info(f"Alert entity {weather_alert_entity} state: {state}")
+                attrs = data.get("attributes", {})
+                result["alerts"] = _normalize_alerts_from_entity(state, attrs)
+                result["alert"] = _primary_alert(result["alerts"])
+        except Exception as e:
+            log.warning(f"Failed to fetch alerts: {e}")
+
     out_t = _get_state(ha_url, ha_token, outdoor_temp, log)
     out_h = _get_state(ha_url, ha_token, outdoor_hum, log)
     out_uv = _get_state(ha_url, ha_token, outdoor_uv, log)
@@ -290,6 +410,7 @@ def fetch_all_data(
     outdoor_aqi: str,
     outdoor_pm25: str,
     sun_entity: str,
+    weather_alert_entity: str,
     dayparts_cache_file: str,
     log,
 ) -> dict:
@@ -317,6 +438,7 @@ def fetch_all_data(
             outdoor_aqi,
             outdoor_pm25,
             sun_entity,
+            weather_alert_entity,
             dayparts_cache_file,
             log,
         ),

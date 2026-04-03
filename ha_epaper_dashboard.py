@@ -69,6 +69,7 @@ HA_URL = ""
 HA_TOKEN = ""
 ROOMS = []
 WEATHER_ENTITY = ""
+WEATHER_ALERT_ENTITY = ""
 OUTDOOR_TEMP = ""
 OUTDOOR_HUM = ""
 OUTDOOR_UV = ""
@@ -484,6 +485,7 @@ def fetch_all_data() -> dict:
         outdoor_aqi=OUTDOOR_AQI,
         outdoor_pm25=OUTDOOR_PM25,
         sun_entity=SUN_ENTITY,
+        weather_alert_entity=WEATHER_ALERT_ENTITY,
         dayparts_cache_file=DAYPARTS_CACHE_FILE,
         log=log,
     )
@@ -500,18 +502,44 @@ def demo_data() -> dict:
             {"name": "Sgabuzzino",  "icon": "storage",    "temp": 17.3, "hum": 55},
         ],
         "weather": {
-            "condition": "partlycloudy", "temperature": 8.2, "humidity": 72, "wind_speed": 12,
+            "condition": "partlycloudy", "temperature": 8.2, "humidity": 72, "wind_speed": 12, "uv_index": 4.5,
             "dayparts": {
                 "morning": {"temperature": 7.0, "condition": "cloudy"},
                 "afternoon": {"temperature": 12.0, "condition": "partlycloudy"},
                 "evening": {"temperature": 9.0, "condition": "rainy"},
             },
             "forecast": [
-                {"datetime": "2026-02-24", "condition": "rainy",        "temperature": 9,  "templow": 3},
-                {"datetime": "2026-02-25", "condition": "cloudy",       "temperature": 11, "templow": 5},
-                {"datetime": "2026-02-26", "condition": "sunny",        "temperature": 13, "templow": 4},
-                {"datetime": "2026-02-27", "condition": "snowy",        "temperature": 4,  "templow": -1},
+                {"datetime": "2026-04-03", "condition": "cloudy",       "temperature": 11, "templow": 5},
+                {"datetime": "2026-04-04", "condition": "sunny",        "temperature": 13, "templow": 4},
+                {"datetime": "2026-04-05", "condition": "snowy",        "temperature": 4,  "templow": -1},
+                {"datetime": "2026-04-06", "condition": "rainy",        "temperature": 8,  "templow": 4},
             ],
+            "alerts": [
+                {
+                    "event": "Yellow Wind Warning",
+                    "severity": "Yellow",
+                    "headline": "Yellow Wind Warning for Italy",
+                    "onset": "2026-04-02T10:00:00+02:00",
+                    "expires": "2026-04-03T23:59:59+02:00",
+                    "type": "wind",
+                },
+                {
+                    "event": "Orange Rain Warning",
+                    "severity": "Orange",
+                    "headline": "Orange Rain Warning for Italy",
+                    "onset": "2026-04-03T00:00:00+02:00",
+                    "expires": "2026-04-04T12:00:00+02:00",
+                    "type": "rain",
+                },
+            ],
+            "alert": {
+                "event": "Orange Rain Warning",
+                "severity": "Orange",
+                "headline": "Orange Rain Warning for Italy",
+                "onset": "2026-04-03T00:00:00+02:00",
+                "expires": "2026-04-04T12:00:00+02:00",
+                "type": "rain",
+            }
         },
     }
 
@@ -520,7 +548,7 @@ def demo_data() -> dict:
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
 def configure_runtime(config: dict, secrets: dict, require_secrets: bool):
-    global HA_URL, HA_TOKEN, ROOMS, WEATHER_ENTITY, OUTDOOR_TEMP, OUTDOOR_HUM, OUTDOOR_UV
+    global HA_URL, HA_TOKEN, ROOMS, WEATHER_ENTITY, WEATHER_ALERT_ENTITY, OUTDOOR_TEMP, OUTDOOR_HUM, OUTDOOR_UV
     global OUTDOOR_AQI, OUTDOOR_PM25, SUN_ENTITY, FOOTER_DAILY_QUOTE, FOOTER_QUOTE, FOOTER_SOURCE
     global QUOTE_API_URL, QUOTE_CACHE_FILE, DAYPARTS_CACHE_FILE, HEADER_WEEKDAY_FORMAT, HEADER_MONTH_FORMAT
     global FORECAST_WEEKDAY_FORMAT, LOCALE, HEADER_TITLE, CLOCK_PARTIAL_REFRESH, CLOCK_PARTIAL_FULLSCREEN
@@ -541,6 +569,7 @@ def configure_runtime(config: dict, secrets: dict, require_secrets: bool):
         rooms_value = []
     ROOMS = rooms_value
     WEATHER_ENTITY = str(config.get("weather_entity", "")).strip()
+    WEATHER_ALERT_ENTITY = str(config.get("weather_alert_entity", "")).strip()
     OUTDOOR_TEMP = str(config.get("outdoor_temp", "")).strip()
     OUTDOOR_HUM = str(config.get("outdoor_hum", "")).strip()
     OUTDOOR_UV = str(config.get("outdoor_uv", "")).strip()
@@ -843,6 +872,7 @@ def run_clock_daemon(
                         changed.get("outdoor")
                         or changed.get("intraday")
                         or changed.get("forecast")
+                        or changed.get("alert")
                         or changed.get("rooms")
                     )
                     data_rects = build_dynamic_partial_rects(data, HEADER_H, W, H, changed=changed)

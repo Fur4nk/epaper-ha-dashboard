@@ -21,6 +21,8 @@ def build_data_snapshot(data: dict, to_float):
     weather = data.get("weather", {}) if isinstance(data, dict) else {}
     dayparts = weather.get("dayparts", {}) if isinstance(weather, dict) else {}
     forecast = weather.get("forecast", []) if isinstance(weather, dict) else []
+    alerts = weather.get("alerts", []) if isinstance(weather, dict) else []
+    alert = weather.get("alert", {}) if isinstance(weather, dict) else {}
     rooms = data.get("rooms", []) if isinstance(data, dict) else []
 
     outdoor = (
@@ -30,6 +32,20 @@ def build_data_snapshot(data: dict, to_float):
         _rounded_or_none(weather.get("uv_index"), to_float, 1),
         str(weather.get("condition", "unknown")),
     )
+
+    normalized_alerts = alerts if isinstance(alerts, list) and alerts else ([alert] if isinstance(alert, dict) and alert else [])
+    alert_key = tuple(
+        (
+            str(item.get("event", "")),
+            str(item.get("severity", "")),
+            str(item.get("onset", "")),
+            str(item.get("expires", "")),
+            str(item.get("level", "")),
+            str(item.get("type", "")),
+        )
+        for item in normalized_alerts
+        if isinstance(item, dict)
+    ) or None
 
     intraday = []
     for key in ("morning", "afternoon", "evening"):
@@ -65,12 +81,18 @@ def build_data_snapshot(data: dict, to_float):
         status = _room_status_key(room.get("temp"), room.get("hum"), to_float)
         room_values.append((t, h, status))
 
-    return {"outdoor": outdoor, "intraday": tuple(intraday), "forecast": tuple(fc), "rooms": tuple(room_values)}
+    return {
+        "outdoor": outdoor,
+        "intraday": tuple(intraday),
+        "forecast": tuple(fc),
+        "alert": alert_key,
+        "rooms": tuple(room_values),
+    }
 
 
 def diff_snapshots(prev_snap, curr_snap):
     if prev_snap is None:
-        return {"outdoor": True, "intraday": True, "forecast": True, "rooms": None, "footer": True}
+        return {"outdoor": True, "intraday": True, "forecast": True, "alert": True, "rooms": None, "footer": True}
 
     room_changes = set()
     prev_rooms = list(prev_snap.get("rooms", ()))
@@ -84,6 +106,7 @@ def diff_snapshots(prev_snap, curr_snap):
         "outdoor": prev_snap.get("outdoor") != curr_snap.get("outdoor"),
         "intraday": prev_snap.get("intraday") != curr_snap.get("intraday"),
         "forecast": prev_snap.get("forecast") != curr_snap.get("forecast"),
+        "alert": prev_snap.get("alert") != curr_snap.get("alert"),
         "rooms": room_changes,
         "footer": True,
     }
@@ -95,9 +118,9 @@ def build_dynamic_partial_rects(data: dict, header_h: int, width: int, height: i
     y += 6
     y += 12
     row_y = y
-    row_h = 72
+    row_h = 88
 
-    if changed is None or changed.get("outdoor"):
+    if changed is None or changed.get("outdoor") or changed.get("alert"):
         rects.append((12, row_y, 190, row_y + row_h))
     if changed is None or changed.get("intraday"):
         rects.append((190, row_y + 18, width, row_y + row_h))
@@ -109,7 +132,7 @@ def build_dynamic_partial_rects(data: dict, header_h: int, width: int, height: i
         y += 2
         y += 10
         fc_top = y
-        if changed is None or changed.get("forecast"):
+        if changed is None or changed.get("forecast") or changed.get("alert"):
             rects.append((8, fc_top + 20, width - 8, fc_top + 64))
         y += 64
 
