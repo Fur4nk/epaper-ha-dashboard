@@ -19,7 +19,8 @@ import time
 import logging
 import argparse
 import requests
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 
 from PIL import Image, ImageDraw, ImageFont
 from dashboard_ha import fetch_all_data as fetch_all_data_from_ha
@@ -65,54 +66,59 @@ def _to_int(value, default: int) -> int:
         return default
 
 
-HA_URL = ""
-HA_TOKEN = ""
-ROOMS = []
-WEATHER_ENTITY = ""
-WEATHER_ALERT_ENTITY = ""
-OUTDOOR_TEMP = ""
-OUTDOOR_HUM = ""
-OUTDOOR_UV = ""
-OUTDOOR_AQI = ""
-OUTDOOR_PM25 = ""
-SUN_ENTITY = "sun.sun"
-FOOTER_DAILY_QUOTE = True
-FOOTER_QUOTE = ""
-FOOTER_SOURCE = ""
-QUOTE_API_URL = "https://zenquotes.io/api/today"
-QUOTE_CACHE_FILE = "/tmp/epaper_daily_quote.json"
-DAYPARTS_CACHE_FILE = "/tmp/epaper_dayparts_cache.json"
-HEADER_WEEKDAY_FORMAT = "full"
-HEADER_MONTH_FORMAT = "full"
-FORECAST_WEEKDAY_FORMAT = "abbr"
-LOCALE = "en"
 I18N_DIR = os.path.join(SCRIPT_DIR, "i18n")
-HEADER_TITLE = "HOUSE"
-CLOCK_PARTIAL_REFRESH = True
-CLOCK_PARTIAL_FULLSCREEN = True
-CLOCK_DAEMON_INTERVAL_SEC = 60
-CLOCK_DAEMON_FULL_EVERY = 240
-CLOCK_DAEMON_DATA_EVERY_MIN = 10
-SHOW_CLOCK = True
 
 W, H = 480, 800
 HEADER_H = 56
 
 FONT_DIR = "/usr/share/fonts/truetype/dejavu"
 DEFAULT_ICON_DIR = os.path.join(SCRIPT_DIR, "assets", "icons")
-ICON_ASSETS = None
 
-WEEKDAYS_ABBR = DEFAULT_I18N["weekdays_abbr"]
-WEEKDAYS_FULL = DEFAULT_I18N["weekdays_full"]
-MONTHS_ABBR = DEFAULT_I18N["months_abbr"]
-MONTHS_FULL = DEFAULT_I18N["months_full"]
-INTRADAY_LABELS = DEFAULT_I18N["intraday_labels"]
-CONDITION_LABELS = DEFAULT_I18N["condition_labels"]
-LABELS = DEFAULT_I18N["labels"]
-FALLBACK_QUOTE = (
-    str(DEFAULT_I18N["fallback_quote"]["text"]),
-    str(DEFAULT_I18N["fallback_quote"]["author"]),
-)
+
+@dataclass
+class DashboardSettings:
+    ha_url: str = ""
+    ha_token: str = ""
+    rooms: list = field(default_factory=list)
+    weather_entity: str = ""
+    weather_alert_entity: str = ""
+    outdoor_temp: str = ""
+    outdoor_hum: str = ""
+    outdoor_uv: str = ""
+    outdoor_aqi: str = ""
+    outdoor_pm25: str = ""
+    sun_entity: str = "sun.sun"
+    footer_daily_quote: bool = True
+    footer_quote: str = ""
+    footer_source: str = ""
+    quote_api_url: str = "https://zenquotes.io/api/today"
+    quote_cache_file: str = "/tmp/epaper_daily_quote.json"
+    dayparts_cache_file: str = "/tmp/epaper_dayparts_cache.json"
+    header_weekday_format: str = "full"
+    header_month_format: str = "full"
+    forecast_weekday_format: str = "abbr"
+    locale: str = "en"
+    header_title: str = "HOUSE"
+    clock_partial_refresh: bool = True
+    clock_partial_fullscreen: bool = True
+    clock_daemon_interval_sec: int = 60
+    clock_daemon_full_every: int = 240
+    clock_daemon_data_every_min: int = 10
+    show_clock: bool = True
+    footer_debug_ticks: bool = False
+    weekdays_abbr: list = field(default_factory=lambda: list(DEFAULT_I18N["weekdays_abbr"]))
+    weekdays_full: list = field(default_factory=lambda: list(DEFAULT_I18N["weekdays_full"]))
+    months_abbr: list = field(default_factory=lambda: list(DEFAULT_I18N["months_abbr"]))
+    months_full: list = field(default_factory=lambda: list(DEFAULT_I18N["months_full"]))
+    intraday_labels: list = field(default_factory=lambda: list(DEFAULT_I18N["intraday_labels"]))
+    condition_labels: dict = field(default_factory=lambda: dict(DEFAULT_I18N["condition_labels"]))
+    labels: dict = field(default_factory=lambda: dict(DEFAULT_I18N["labels"]))
+    fallback_quote: tuple = field(
+        default_factory=lambda: (
+            str(DEFAULT_I18N["fallback_quote"]["text"]),
+            str(DEFAULT_I18N["fallback_quote"]["author"]),
+        )
+    )
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  LOGGING                                                                 ║
@@ -473,24 +479,30 @@ def _portrait_rect_to_epd_rect(rect, portrait_w: int, portrait_h: int):
     return min(xs), min(ys), max(xs) + 1, max(ys) + 1
 
 
-def fetch_all_data() -> dict:
+def fetch_all_data(settings: DashboardSettings) -> dict:
     return fetch_all_data_from_ha(
-        ha_url=HA_URL,
-        ha_token=HA_TOKEN,
-        rooms=ROOMS,
-        weather_entity=WEATHER_ENTITY,
-        outdoor_temp=OUTDOOR_TEMP,
-        outdoor_hum=OUTDOOR_HUM,
-        outdoor_uv=OUTDOOR_UV,
-        outdoor_aqi=OUTDOOR_AQI,
-        outdoor_pm25=OUTDOOR_PM25,
-        sun_entity=SUN_ENTITY,
-        weather_alert_entity=WEATHER_ALERT_ENTITY,
-        dayparts_cache_file=DAYPARTS_CACHE_FILE,
+        ha_url=settings.ha_url,
+        ha_token=settings.ha_token,
+        rooms=settings.rooms,
+        weather_entity=settings.weather_entity,
+        outdoor_temp=settings.outdoor_temp,
+        outdoor_hum=settings.outdoor_hum,
+        outdoor_uv=settings.outdoor_uv,
+        outdoor_aqi=settings.outdoor_aqi,
+        outdoor_pm25=settings.outdoor_pm25,
+        sun_entity=settings.sun_entity,
+        weather_alert_entity=settings.weather_alert_entity,
+        dayparts_cache_file=settings.dayparts_cache_file,
         log=log,
     )
 
 def demo_data() -> dict:
+    today = datetime.now().date()
+    forecast_days = [today + timedelta(days=offset) for offset in range(1, 5)]
+    primary_onset = datetime.combine(today + timedelta(days=1), datetime.min.time()).astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+    primary_expires = primary_onset + timedelta(days=1, hours=12)
+    secondary_onset = datetime.combine(today, datetime.min.time()).astimezone().replace(hour=10, minute=0, second=0, microsecond=0)
+    secondary_expires = secondary_onset + timedelta(days=1, hours=13, minutes=59, seconds=59)
     return {
         "rooms": [
             {"name": "Cucina",      "icon": "kitchen",    "temp": 22.4, "hum": 48},
@@ -509,26 +521,26 @@ def demo_data() -> dict:
                 "evening": {"temperature": 9.0, "condition": "rainy"},
             },
             "forecast": [
-                {"datetime": "2026-04-03", "condition": "cloudy",       "temperature": 11, "templow": 5},
-                {"datetime": "2026-04-04", "condition": "sunny",        "temperature": 13, "templow": 4},
-                {"datetime": "2026-04-05", "condition": "snowy",        "temperature": 4,  "templow": -1},
-                {"datetime": "2026-04-06", "condition": "rainy",        "temperature": 8,  "templow": 4},
+                {"datetime": forecast_days[0].isoformat(), "condition": "cloudy", "temperature": 11, "templow": 5},
+                {"datetime": forecast_days[1].isoformat(), "condition": "sunny", "temperature": 13, "templow": 4},
+                {"datetime": forecast_days[2].isoformat(), "condition": "snowy", "temperature": 4, "templow": -1},
+                {"datetime": forecast_days[3].isoformat(), "condition": "rainy", "temperature": 8, "templow": 4},
             ],
             "alerts": [
                 {
                     "event": "Yellow Wind Warning",
                     "severity": "Yellow",
                     "headline": "Yellow Wind Warning for Italy",
-                    "onset": "2026-04-02T10:00:00+02:00",
-                    "expires": "2026-04-03T23:59:59+02:00",
+                    "onset": secondary_onset.isoformat(),
+                    "expires": secondary_expires.isoformat(),
                     "type": "wind",
                 },
                 {
                     "event": "Orange Rain Warning",
                     "severity": "Orange",
                     "headline": "Orange Rain Warning for Italy",
-                    "onset": "2026-04-03T00:00:00+02:00",
-                    "expires": "2026-04-04T12:00:00+02:00",
+                    "onset": primary_onset.isoformat(),
+                    "expires": primary_expires.isoformat(),
                     "type": "rain",
                 },
             ],
@@ -536,8 +548,8 @@ def demo_data() -> dict:
                 "event": "Orange Rain Warning",
                 "severity": "Orange",
                 "headline": "Orange Rain Warning for Italy",
-                "onset": "2026-04-03T00:00:00+02:00",
-                "expires": "2026-04-04T12:00:00+02:00",
+                "onset": primary_onset.isoformat(),
+                "expires": primary_expires.isoformat(),
                 "type": "rain",
             }
         },
@@ -547,19 +559,10 @@ def demo_data() -> dict:
 # ║  RENDERER                                                                ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
-def configure_runtime(config: dict, secrets: dict, require_secrets: bool):
-    global HA_URL, HA_TOKEN, ROOMS, WEATHER_ENTITY, WEATHER_ALERT_ENTITY, OUTDOOR_TEMP, OUTDOOR_HUM, OUTDOOR_UV
-    global OUTDOOR_AQI, OUTDOOR_PM25, SUN_ENTITY, FOOTER_DAILY_QUOTE, FOOTER_QUOTE, FOOTER_SOURCE
-    global QUOTE_API_URL, QUOTE_CACHE_FILE, DAYPARTS_CACHE_FILE, HEADER_WEEKDAY_FORMAT, HEADER_MONTH_FORMAT
-    global FORECAST_WEEKDAY_FORMAT, LOCALE, HEADER_TITLE, CLOCK_PARTIAL_REFRESH, CLOCK_PARTIAL_FULLSCREEN
-    global CLOCK_DAEMON_INTERVAL_SEC, CLOCK_DAEMON_FULL_EVERY, CLOCK_DAEMON_DATA_EVERY_MIN, SHOW_CLOCK
-    global FOOTER_DEBUG_TICKS
-    global WEEKDAYS_ABBR, WEEKDAYS_FULL, MONTHS_ABBR, MONTHS_FULL, INTRADAY_LABELS, CONDITION_LABELS, LABELS
-    global FALLBACK_QUOTE
-
-    HA_URL = str(secrets.get("ha_url", "")).strip()
-    HA_TOKEN = str(secrets.get("ha_token", "")).strip()
-    if require_secrets and (not HA_URL or not HA_TOKEN):
+def build_settings(config: dict, secrets: dict, require_secrets: bool) -> DashboardSettings:
+    ha_url = str(secrets.get("ha_url", "")).strip()
+    ha_token = str(secrets.get("ha_token", "")).strip()
+    if require_secrets and (not ha_url or not ha_token):
         print("ERROR: secrets.json must contain non-empty 'ha_url' and 'ha_token'.")
         sys.exit(1)
 
@@ -567,29 +570,11 @@ def configure_runtime(config: dict, secrets: dict, require_secrets: bool):
     if not isinstance(rooms_value, list):
         log.warning("Invalid config.rooms: expected list, using empty list")
         rooms_value = []
-    ROOMS = rooms_value
-    WEATHER_ENTITY = str(config.get("weather_entity", "")).strip()
-    WEATHER_ALERT_ENTITY = str(config.get("weather_alert_entity", "")).strip()
-    OUTDOOR_TEMP = str(config.get("outdoor_temp", "")).strip()
-    OUTDOOR_HUM = str(config.get("outdoor_hum", "")).strip()
-    OUTDOOR_UV = str(config.get("outdoor_uv", "")).strip()
-    OUTDOOR_AQI = str(config.get("outdoor_aqi", "")).strip()
-    OUTDOOR_PM25 = str(config.get("outdoor_pm25", "")).strip()
-    SUN_ENTITY = str(config.get("sun_entity", "sun.sun")).strip() or "sun.sun"
-    FOOTER_DAILY_QUOTE = bool(config.get("footer_daily_quote", True))
-    FOOTER_QUOTE = str(config.get("footer_quote", "")).strip()
-    FOOTER_SOURCE = str(config.get("footer_source", "")).strip()
-    QUOTE_API_URL = str(config.get("quote_api_url", "https://zenquotes.io/api/today")).strip()
-    QUOTE_CACHE_FILE = str(config.get("quote_cache_file", "/tmp/epaper_daily_quote.json")).strip()
-    DAYPARTS_CACHE_FILE = str(config.get("dayparts_cache_file", "/tmp/epaper_dayparts_cache.json")).strip()
-    HEADER_WEEKDAY_FORMAT = str(config.get("header_weekday_format", "full")).strip().lower()
-    HEADER_MONTH_FORMAT = str(config.get("header_month_format", "full")).strip().lower()
-    FORECAST_WEEKDAY_FORMAT = str(config.get("forecast_weekday_format", "abbr")).strip().lower()
-    LOCALE = str(config.get("locale", "en")).strip().lower() or "en"
-    HEADER_TITLE = str(config.get("header_title", "HOUSE")).strip() or "HOUSE"
-    CLOCK_PARTIAL_REFRESH = bool(config.get("clock_partial_refresh", True))
-    CLOCK_PARTIAL_FULLSCREEN = bool(config.get("clock_partial_fullscreen", True))
-    CLOCK_DAEMON_INTERVAL_SEC = _to_int(config.get("clock_daemon_interval_sec", 60), 60)
+    header_weekday_format = str(config.get("header_weekday_format", "full")).strip().lower()
+    header_month_format = str(config.get("header_month_format", "full")).strip().lower()
+    forecast_weekday_format = str(config.get("forecast_weekday_format", "abbr")).strip().lower()
+    locale = str(config.get("locale", "en")).strip().lower() or "en"
+    clock_daemon_interval_sec = _to_int(config.get("clock_daemon_interval_sec", 60), 60)
     full_every_cfg = config.get("clock_daemon_full_every_ticks", None)
     if full_every_cfg is None:
         full_every_cfg = config.get("clock_daemon_full_every", 240)
@@ -598,41 +583,78 @@ def configure_runtime(config: dict, secrets: dict, require_secrets: bool):
                 "config key 'clock_daemon_full_every' is deprecated; "
                 "use 'clock_daemon_full_every_ticks' (unit: display ticks, not minutes)"
             )
-    CLOCK_DAEMON_FULL_EVERY = _to_int(full_every_cfg, 240)
-    CLOCK_DAEMON_DATA_EVERY_MIN = _to_int(config.get("clock_daemon_data_every_min", 10), 10)
-    SHOW_CLOCK = bool(config.get("show_clock", True))
-    FOOTER_DEBUG_TICKS = bool(config.get("footer_debug_ticks", False))
+    clock_daemon_full_every = _to_int(full_every_cfg, 240)
+    clock_daemon_data_every_min = _to_int(config.get("clock_daemon_data_every_min", 10), 10)
 
-    if HEADER_WEEKDAY_FORMAT not in ("full", "abbr"):
+    if header_weekday_format not in ("full", "abbr"):
         log.warning("Invalid header_weekday_format in config.json, using 'full'")
-        HEADER_WEEKDAY_FORMAT = "full"
-    if HEADER_MONTH_FORMAT not in ("full", "abbr"):
+        header_weekday_format = "full"
+    if header_month_format not in ("full", "abbr"):
         log.warning("Invalid header_month_format in config.json, using 'full'")
-        HEADER_MONTH_FORMAT = "full"
-    if FORECAST_WEEKDAY_FORMAT not in ("full", "abbr"):
+        header_month_format = "full"
+    if forecast_weekday_format not in ("full", "abbr"):
         log.warning("Invalid forecast_weekday_format in config.json, using 'abbr'")
-        FORECAST_WEEKDAY_FORMAT = "abbr"
+        forecast_weekday_format = "abbr"
 
-    i18n = load_i18n_bundle(LOCALE, I18N_DIR, log)
-    WEEKDAYS_ABBR = i18n["weekdays_abbr"]
-    WEEKDAYS_FULL = i18n["weekdays_full"]
-    MONTHS_ABBR = i18n["months_abbr"]
-    MONTHS_FULL = i18n["months_full"]
-    INTRADAY_LABELS = i18n["intraday_labels"]
-    CONDITION_LABELS = i18n["condition_labels"]
-    LABELS = i18n["labels"]
-    if not isinstance(INTRADAY_LABELS, list) or len(INTRADAY_LABELS) != 3:
-        INTRADAY_LABELS = list(DEFAULT_I18N["intraday_labels"])
+    i18n = load_i18n_bundle(locale, I18N_DIR, log)
+    weekdays_abbr = i18n["weekdays_abbr"]
+    weekdays_full = i18n["weekdays_full"]
+    months_abbr = i18n["months_abbr"]
+    months_full = i18n["months_full"]
+    intraday_labels = i18n["intraday_labels"]
+    condition_labels = i18n["condition_labels"]
+    labels = i18n["labels"]
+    if not isinstance(intraday_labels, list) or len(intraday_labels) != 3:
+        intraday_labels = list(DEFAULT_I18N["intraday_labels"])
     fallback_quote = i18n["fallback_quote"] if isinstance(i18n.get("fallback_quote"), dict) else {}
-    FALLBACK_QUOTE = (
-        str(fallback_quote.get("text", DEFAULT_I18N["fallback_quote"]["text"])),
-        str(fallback_quote.get("author", DEFAULT_I18N["fallback_quote"]["author"])),
+
+    return DashboardSettings(
+        ha_url=ha_url,
+        ha_token=ha_token,
+        rooms=rooms_value,
+        weather_entity=str(config.get("weather_entity", "")).strip(),
+        weather_alert_entity=str(config.get("weather_alert_entity", "")).strip(),
+        outdoor_temp=str(config.get("outdoor_temp", "")).strip(),
+        outdoor_hum=str(config.get("outdoor_hum", "")).strip(),
+        outdoor_uv=str(config.get("outdoor_uv", "")).strip(),
+        outdoor_aqi=str(config.get("outdoor_aqi", "")).strip(),
+        outdoor_pm25=str(config.get("outdoor_pm25", "")).strip(),
+        sun_entity=str(config.get("sun_entity", "sun.sun")).strip() or "sun.sun",
+        footer_daily_quote=bool(config.get("footer_daily_quote", True)),
+        footer_quote=str(config.get("footer_quote", "")).strip(),
+        footer_source=str(config.get("footer_source", "")).strip(),
+        quote_api_url=str(config.get("quote_api_url", "https://zenquotes.io/api/today")).strip(),
+        quote_cache_file=str(config.get("quote_cache_file", "/tmp/epaper_daily_quote.json")).strip(),
+        dayparts_cache_file=str(config.get("dayparts_cache_file", "/tmp/epaper_dayparts_cache.json")).strip(),
+        header_weekday_format=header_weekday_format,
+        header_month_format=header_month_format,
+        forecast_weekday_format=forecast_weekday_format,
+        locale=locale,
+        header_title=str(config.get("header_title", "HOUSE")).strip() or "HOUSE",
+        clock_partial_refresh=bool(config.get("clock_partial_refresh", True)),
+        clock_partial_fullscreen=bool(config.get("clock_partial_fullscreen", True)),
+        clock_daemon_interval_sec=clock_daemon_interval_sec,
+        clock_daemon_full_every=clock_daemon_full_every,
+        clock_daemon_data_every_min=clock_daemon_data_every_min,
+        show_clock=bool(config.get("show_clock", True)),
+        footer_debug_ticks=bool(config.get("footer_debug_ticks", False)),
+        weekdays_abbr=weekdays_abbr,
+        weekdays_full=weekdays_full,
+        months_abbr=months_abbr,
+        months_full=months_full,
+        intraday_labels=intraday_labels,
+        condition_labels=condition_labels,
+        labels=labels,
+        fallback_quote=(
+            str(fallback_quote.get("text", DEFAULT_I18N["fallback_quote"]["text"])),
+            str(fallback_quote.get("author", DEFAULT_I18N["fallback_quote"]["author"])),
+        ),
     )
 
 
-def _read_quote_cache():
+def _read_quote_cache(settings: DashboardSettings):
     try:
-        with open(QUOTE_CACHE_FILE) as f:
+        with open(settings.quote_cache_file) as f:
             data = json.load(f)
         quote = (data.get("quote") or "").strip()
         author = (data.get("author") or "").strip()
@@ -644,50 +666,50 @@ def _read_quote_cache():
     return None
 
 
-def _write_quote_cache(now: datetime, quote: str, author: str):
+def _write_quote_cache(settings: DashboardSettings, now: datetime, quote: str, author: str):
     try:
-        with open(QUOTE_CACHE_FILE, "w") as f:
+        with open(settings.quote_cache_file, "w") as f:
             json.dump(
                 {"date": now.strftime("%Y-%m-%d"), "quote": quote, "author": author},
                 f,
             )
     except Exception as e:
-        log.warning(f"Failed to write quote cache {QUOTE_CACHE_FILE}: {e}")
+        log.warning(f"Failed to write quote cache {settings.quote_cache_file}: {e}")
 
 
-def daily_quote(now: datetime):
+def daily_quote(settings: DashboardSettings, now: datetime):
     today = now.strftime("%Y-%m-%d")
-    cached = _read_quote_cache()
+    cached = _read_quote_cache(settings)
     if cached and cached[2] == today:
         return cached[0], cached[1]
 
     try:
-        r = requests.get(QUOTE_API_URL, timeout=8)
+        r = requests.get(settings.quote_api_url, timeout=8)
         r.raise_for_status()
         data = r.json()
         if isinstance(data, list) and data and isinstance(data[0], dict):
             quote = (data[0].get("q") or "").strip()
             author = (data[0].get("a") or "").strip()
             if quote and author:
-                _write_quote_cache(now, quote, author)
+                _write_quote_cache(settings, now, quote, author)
                 return quote, author
     except Exception as e:
-        log.warning(f"Failed to fetch daily quote from {QUOTE_API_URL}: {e}")
+        log.warning(f"Failed to fetch daily quote from {settings.quote_api_url}: {e}")
 
     if cached:
         return cached[0], cached[1]
-    if FOOTER_QUOTE and FOOTER_SOURCE:
-        return FOOTER_QUOTE, FOOTER_SOURCE
-    return FALLBACK_QUOTE
+    if settings.footer_quote and settings.footer_source:
+        return settings.footer_quote, settings.footer_source
+    return settings.fallback_quote
 
 
-def footer_text(now: datetime):
-    if FOOTER_DAILY_QUOTE:
-        return daily_quote(now)
-    return FOOTER_QUOTE, FOOTER_SOURCE
+def footer_text(settings: DashboardSettings, now: datetime):
+    if settings.footer_daily_quote:
+        return daily_quote(settings, now)
+    return settings.footer_quote, settings.footer_source
 
 
-def update_clock_header(img: Image.Image, now: datetime = None):
+def update_clock_header(img: Image.Image, settings: DashboardSettings, now: datetime = None):
     now = now or datetime.now()
     fonts = load_fonts()
     renderer_update_clock_header(
@@ -696,18 +718,18 @@ def update_clock_header(img: Image.Image, now: datetime = None):
         width=W,
         header_h=HEADER_H,
         fonts=fonts,
-        show_clock=SHOW_CLOCK,
-        header_title=HEADER_TITLE,
-        weekdays_full=WEEKDAYS_FULL,
-        weekdays_abbr=WEEKDAYS_ABBR,
-        months_full=MONTHS_FULL,
-        months_abbr=MONTHS_ABBR,
-        header_weekday_format=HEADER_WEEKDAY_FORMAT,
-        header_month_format=HEADER_MONTH_FORMAT,
+        show_clock=settings.show_clock,
+        header_title=settings.header_title,
+        weekdays_full=settings.weekdays_full,
+        weekdays_abbr=settings.weekdays_abbr,
+        months_full=settings.months_full,
+        months_abbr=settings.months_abbr,
+        header_weekday_format=settings.header_weekday_format,
+        header_month_format=settings.header_month_format,
     )
 
 
-def load_cached_full_image(cache_image: str) -> Image.Image:
+def load_cached_full_image(cache_image: str, settings: DashboardSettings) -> Image.Image:
     cache_path = os.path.abspath(os.path.expanduser(cache_image))
     try:
         img = Image.open(cache_path).convert("1")
@@ -717,12 +739,14 @@ def load_cached_full_image(cache_image: str) -> Image.Image:
     except Exception as e:
         log.warning(f"Cache image unavailable ({cache_path}): {e}")
     img = Image.new("1", (W, H), 255)
-    update_clock_header(img)
+    update_clock_header(img, settings)
     return img
 
 
 def render(
     data: dict,
+    settings: DashboardSettings,
+    icon_assets,
     now: datetime = None,
     last_updated: datetime = None,
     footer_debug_text: str = "",
@@ -736,21 +760,21 @@ def render(
         height=H,
         header_h=HEADER_H,
         fonts=fonts,
-        icon_assets=ICON_ASSETS,
+        icon_assets=icon_assets,
         icons_cls=Icons,
-        condition_labels=CONDITION_LABELS,
-        intraday_labels=INTRADAY_LABELS,
-        labels=LABELS,
-        weekdays_full=WEEKDAYS_FULL,
-        weekdays_abbr=WEEKDAYS_ABBR,
-        months_full=MONTHS_FULL,
-        months_abbr=MONTHS_ABBR,
-        header_weekday_format=HEADER_WEEKDAY_FORMAT,
-        header_month_format=HEADER_MONTH_FORMAT,
-        forecast_weekday_format=FORECAST_WEEKDAY_FORMAT,
-        show_clock=SHOW_CLOCK,
-        header_title=HEADER_TITLE,
-        footer_text_fn=footer_text,
+        condition_labels=settings.condition_labels,
+        intraday_labels=settings.intraday_labels,
+        labels=settings.labels,
+        weekdays_full=settings.weekdays_full,
+        weekdays_abbr=settings.weekdays_abbr,
+        months_full=settings.months_full,
+        months_abbr=settings.months_abbr,
+        header_weekday_format=settings.header_weekday_format,
+        header_month_format=settings.header_month_format,
+        forecast_weekday_format=settings.forecast_weekday_format,
+        show_clock=settings.show_clock,
+        header_title=settings.header_title,
+        footer_text_fn=lambda footer_now: footer_text(settings, footer_now),
         last_updated=last_updated,
         footer_debug_text=footer_debug_text,
     )
@@ -777,6 +801,8 @@ def send_to_epaper(
 
 
 def run_clock_daemon(
+    settings: DashboardSettings,
+    icon_assets,
     epd_lib_path: str,
     cache_image: str,
     interval_sec: int,
@@ -807,18 +833,18 @@ def run_clock_daemon(
     ticks_since_full = 0
     last_data_snapshot = None
     last_date = datetime.now().date()
-    img = load_cached_full_image(cache_image)
+    img = load_cached_full_image(cache_image, settings)
     try:
-        initial_data = demo_data() if demo else fetch_all_data()
+        initial_data = demo_data() if demo else fetch_all_data(settings)
         init_now = datetime.now()
-        startup_debug_text = "0" if FOOTER_DEBUG_TICKS else ""
-        img = render(initial_data, now=init_now, last_updated=init_now, footer_debug_text=startup_debug_text)
+        startup_debug_text = "0" if settings.footer_debug_ticks else ""
+        img = render(initial_data, settings, icon_assets, now=init_now, last_updated=init_now, footer_debug_text=startup_debug_text)
         last_data_snapshot = build_data_snapshot(initial_data, _to_float)
     except Exception as e:
         log.warning(f"Initial render failed, using cached image: {e}")
-        update_clock_header(img)
+        update_clock_header(img, settings)
     last_frame_img = img.copy()
-    if SHOW_CLOCK:
+    if settings.show_clock:
         log.info(
             f"Clock daemon started (clock every {interval_sec}s, data every {data_every_min}m, "
             f"full every {full_every} ticks)"
@@ -850,7 +876,7 @@ def run_clock_daemon(
                 if day_changed:
                     log.info("Day changed, forcing data refresh")
                     last_date = now.date()
-                do_clock_tick = bool(SHOW_CLOCK and not do_data)
+                do_clock_tick = bool(settings.show_clock and not do_data)
 
                 if not do_data and not do_clock_tick:
                     tick_count += 1
@@ -861,11 +887,11 @@ def run_clock_daemon(
 
                 do_full = display_tick_count == 0 or (display_tick_count % full_every == 0) or day_changed
                 debug_tick_value = 0 if do_full else (ticks_since_full + 1)
-                debug_text = str(debug_tick_value) if FOOTER_DEBUG_TICKS else ""
+                debug_text = str(debug_tick_value) if settings.footer_debug_ticks else ""
 
                 if do_data:
-                    data = demo_data() if demo else fetch_all_data()
-                    new_img = render(data, now=now, last_updated=now, footer_debug_text=debug_text)
+                    data = demo_data() if demo else fetch_all_data(settings)
+                    new_img = render(data, settings, icon_assets, now=now, last_updated=now, footer_debug_text=debug_text)
                     curr_snapshot = build_data_snapshot(data, _to_float)
                     changed = diff_snapshots(last_data_snapshot, curr_snapshot)
                     has_data_change = bool(
@@ -886,8 +912,8 @@ def run_clock_daemon(
                     last_data_snapshot = curr_snapshot
                 else:
                     img = last_frame_img.copy()
-                    update_clock_header(img, now=now)
-                    if FOOTER_DEBUG_TICKS:
+                    update_clock_header(img, settings, now=now)
+                    if settings.footer_debug_ticks:
                         draw = ImageDraw.Draw(img)
                         fonts = load_fonts()
                         draw.text((W - 3, H - 1), debug_text, fill=0, font=fonts["tiny"], anchor="rd")
@@ -954,7 +980,6 @@ def run_clock_daemon(
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
 def main():
-    global ICON_ASSETS
     parser = argparse.ArgumentParser(description="HA e-Paper Dashboard")
     parser.add_argument("--simulate", action="store_true", help="Save PNG instead of driving e-paper")
     parser.add_argument("--demo", action="store_true", help="Use demo data instead of fetching from HA")
@@ -977,7 +1002,7 @@ def main():
     parser.add_argument(
         "--clock-interval-sec",
         type=int,
-        default=CLOCK_DAEMON_INTERVAL_SEC,
+        default=60,
         help="Clock daemon tick interval (seconds)",
     )
     parser.add_argument(
@@ -985,13 +1010,13 @@ def main():
         "--clock-full-every-ticks",
         dest="clock_full_every",
         type=int,
-        default=CLOCK_DAEMON_FULL_EVERY,
+        default=240,
         help="Clock daemon force full refresh every N display ticks (not minutes)",
     )
     parser.add_argument(
         "--clock-data-every-min",
         type=int,
-        default=CLOCK_DAEMON_DATA_EVERY_MIN,
+        default=10,
         help="Clock daemon refresh non-clock data every N minutes",
     )
     args = parser.parse_args()
@@ -1000,49 +1025,51 @@ def main():
     config_required = require_ha_credentials
     config = _load_json("config.json", required=config_required)
     secrets = _load_json("secrets.json", required=require_ha_credentials)
-    configure_runtime(config, secrets, require_secrets=require_ha_credentials)
+    settings = build_settings(config, secrets, require_secrets=require_ha_credentials)
 
     if "--clock-interval-sec" not in sys.argv:
-        args.clock_interval_sec = CLOCK_DAEMON_INTERVAL_SEC
+        args.clock_interval_sec = settings.clock_daemon_interval_sec
     if "--clock-full-every" not in sys.argv and "--clock-full-every-ticks" not in sys.argv:
-        args.clock_full_every = CLOCK_DAEMON_FULL_EVERY
+        args.clock_full_every = settings.clock_daemon_full_every
     if "--clock-data-every-min" not in sys.argv:
-        args.clock_data_every_min = CLOCK_DAEMON_DATA_EVERY_MIN
+        args.clock_data_every_min = settings.clock_daemon_data_every_min
 
-    ICON_ASSETS = IconAssets(args.icons_dir)
+    icon_assets = IconAssets(args.icons_dir)
     args.clock_interval_sec = max(1, int(args.clock_interval_sec))
     args.clock_full_every = max(1, int(args.clock_full_every))
     args.clock_data_every_min = max(1, int(args.clock_data_every_min))
 
     if args.mode == "clock-daemon":
         run_clock_daemon(
+            settings=settings,
+            icon_assets=icon_assets,
             epd_lib_path=args.epd_lib_path,
             cache_image=args.cache_image,
             interval_sec=args.clock_interval_sec,
             full_every=args.clock_full_every,
             data_every_min=args.clock_data_every_min,
-            partial_refresh=args.clock_partial_refresh or bool(CLOCK_PARTIAL_REFRESH),
-            partial_fullscreen=bool(CLOCK_PARTIAL_FULLSCREEN),
+            partial_refresh=args.clock_partial_refresh or bool(settings.clock_partial_refresh),
+            partial_fullscreen=bool(settings.clock_partial_fullscreen),
             demo=args.demo,
         )
         return
 
     if args.mode == "clock":
         log.info("Clock-only mode: reusing cached full image")
-        img = load_cached_full_image(args.cache_image)
-        update_clock_header(img)
+        img = load_cached_full_image(args.cache_image, settings)
+        update_clock_header(img, settings)
     else:
         if args.demo:
             log.info("Using demo data")
             data = demo_data()
         else:
             log.info("Fetching from Home Assistant...")
-            data = fetch_all_data()
+            data = fetch_all_data(settings)
 
         log.info("Rendering...")
         now = datetime.now()
-        debug_text = "0" if FOOTER_DEBUG_TICKS else ""
-        img = render(data, now=now, last_updated=now, footer_debug_text=debug_text)
+        debug_text = "0" if settings.footer_debug_ticks else ""
+        img = render(data, settings, icon_assets, now=now, last_updated=now, footer_debug_text=debug_text)
         try:
             img.save(args.cache_image, "PNG")
         except Exception as e:
@@ -1052,7 +1079,7 @@ def main():
         img.save(args.output, "PNG")
         log.info(f"Preview: {args.output}")
     else:
-        clock_partial_refresh = args.clock_partial_refresh or bool(CLOCK_PARTIAL_REFRESH)
+        clock_partial_refresh = args.clock_partial_refresh or bool(settings.clock_partial_refresh)
         send_to_epaper(
             img,
             args.epd_lib_path,

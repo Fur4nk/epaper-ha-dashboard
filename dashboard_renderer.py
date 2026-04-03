@@ -79,7 +79,7 @@ def _primary_alert_text(alert: dict):
         return ""
     severity = str(alert.get("severity", "")).strip()
     label = str(alert.get("event") or alert.get("headline") or "Alert").strip()
-    if severity:
+    if severity and not label.lower().startswith(severity.lower()):
         return f"{severity} {label}"
     return label
 
