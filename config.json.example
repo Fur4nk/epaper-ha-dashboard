@@ -16,6 +16,7 @@
     "header_weekday_format": "full",
     "header_month_format": "full",
     "forecast_weekday_format": "abbr",
+    "blocks": ["outdoor", "forecast", "rooms", "footer"],
     "show_clock": true,
     "footer_debug_ticks": false,
     "clock_partial_refresh": true,

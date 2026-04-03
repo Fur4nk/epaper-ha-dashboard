@@ -51,6 +51,27 @@ Room object fields:
 - `header_month_format` (`full` or `abbr`)
 - `forecast_weekday_format` (`full` or `abbr`)
 
+### Layout blocks
+
+- `blocks`: optional ordered list of body sections to render.
+- Allowed values: `outdoor`, `forecast`, `rooms`, `footer`
+- Default order: `["outdoor", "forecast", "rooms", "footer"]`
+- Unknown values are ignored; duplicates are removed.
+
+Examples:
+
+```json
+{
+  "blocks": ["outdoor", "rooms", "footer"]
+}
+```
+
+```json
+{
+  "blocks": ["rooms", "outdoor", "forecast", "footer"]
+}
+```
+
 ### Quotes/footer options
 
 - `footer_daily_quote` (`true` to fetch quote of the day)

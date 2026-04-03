@@ -216,6 +216,227 @@ def draw_footer(
         draw.text((width - 3, height - 1), footer_debug_text, fill=0, font=fonts["tiny"], anchor="rd")
 
 
+def _draw_outdoor_block(
+    draw,
+    img,
+    weather: dict,
+    *,
+    y: int,
+    width: int,
+    fonts: dict,
+    icon_assets,
+    icons_cls,
+    condition_labels: dict,
+    intraday_labels: list,
+    labels: dict,
+):
+    cond = weather.get("condition", "unknown")
+    out_temp = weather.get("temperature")
+    out_hum = weather.get("humidity")
+    wind = weather.get("wind_speed")
+    uv = weather.get("uv_index")
+    dayparts = weather.get("dayparts", {}) if isinstance(weather, dict) else {}
+    alerts = _weather_alerts(weather)
+    primary_alert = alerts[0] if alerts else None
+
+    draw.text((16, y), labels.get("outdoor", "OUTDOOR"), fill=0, font=fonts["section"])
+    y += 12
+    row_y = y
+    row_h = 88
+    cond_text = condition_labels.get(cond, cond.replace("_", " ").title())
+    left_x = 16
+    split_x = 198
+
+    if out_temp is not None:
+        temp_num = f"{int(round(float(out_temp)))}"
+        num_w = int(draw.textlength(temp_num, font=fonts["temp_outdoor"]))
+        draw.text((left_x, row_y + 20), temp_num, fill=0, font=fonts["temp_outdoor"])
+        draw.text((left_x + num_w - 2, row_y + 20), "°", fill=0, font=fonts["temp_outdoor"])
+    else:
+        draw.text((left_x, row_y + 20), "—°", fill=0, font=fonts["temp_outdoor"])
+    info_x = left_x + 76
+    cond_text = _fit_text(draw, cond_text, fonts["info"], split_x - info_x - 12)
+    draw.text((info_x, row_y + 13), cond_text, fill=0, font=fonts["info"])
+    label_w = 24
+    draw.text((info_x, row_y + 27), labels.get("humidity_short", "Hu"), fill=0, font=fonts["info"])
+    draw.text((info_x + label_w, row_y + 27), f"{out_hum:.0f}%" if out_hum is not None else "--%", fill=0, font=fonts["info"])
+    wind_x = info_x + 2
+    draw.text((wind_x, row_y + 40), labels.get("wind_short", "Wi"), fill=0, font=fonts["info"])
+    draw.text((wind_x + label_w, row_y + 40), f"{wind:.0f} km/h" if wind is not None else "-- km/h", fill=0, font=fonts["info"])
+
+    if uv is not None:
+        uv_value = float(uv)
+        if uv_value < 3:
+            uv_level = "(low)"
+        elif uv_value < 6:
+            uv_level = "(medium)"
+        else:
+            uv_level = "(high)"
+        uv_line = f"UV {uv_value:.1f} {uv_level}"
+        uv_line = _fit_text(draw, uv_line, fonts["info"], split_x - info_x - 10)
+        draw.text((info_x, row_y + 53), uv_line, fill=0, font=fonts["info"])
+
+    if primary_alert:
+        alert_text = _primary_alert_text(primary_alert)
+        tx, ty = left_x + 6, row_y + 82
+        alert_icon_ok = icon_assets.draw(img, "weather", "alert", tx, ty, 16) if icon_assets else False
+        if not alert_icon_ok:
+            draw.polygon([(tx - 6, ty + 5), (tx, ty - 5), (tx + 6, ty + 5)], outline=0, fill=0)
+            draw.text((tx - 1, ty - 4), "!", fill=255, font=fonts["tiny"])
+        alert_text = _fit_text(draw, alert_text.upper(), fonts["tiny"], split_x - left_x - 18)
+        draw.text((left_x + 16, ty - 8), alert_text, fill=0, font=fonts["tiny"])
+
+    sep_x = split_x - 8
+    sep_y0 = row_y + 8
+    sep_y1 = row_y + row_h - 8
+    draw.line([(sep_x, sep_y0), (sep_x, sep_y1)], fill=0, width=1)
+
+    intraday_keys = list(zip(intraday_labels, ["morning", "afternoon", "evening"]))
+    col_w = (width - split_x - 8) // 3
+    for i, (label, key) in enumerate(intraday_keys):
+        fx = split_x + i * col_w + col_w // 2
+        entry = dayparts.get(key, {}) if isinstance(dayparts, dict) else {}
+        t_min = entry.get("min") if isinstance(entry, dict) else None
+        t_max = entry.get("max") if isinstance(entry, dict) else None
+        e_cond = entry.get("condition", cond) if isinstance(entry, dict) else cond
+        mm_txt = f"{float(t_min):.0f}°/{float(t_max):.0f}°" if t_min is not None and t_max is not None else "—°/—°"
+        draw.text((fx, row_y + 2), label, fill=0, font=fonts["fc_day"], anchor="mt")
+        intraday_icon_ok = icon_assets.draw_weather(img, e_cond, fx, row_y + 40, 40) if icon_assets else False
+        if not intraday_icon_ok:
+            icons_cls.weather(draw, fx, row_y + 40, e_cond, r=20)
+        draw.text((fx, row_y + 63), mm_txt, fill=0, font=fonts["fc_temp"], anchor="mt")
+    return y + row_h
+
+
+def _draw_forecast_block(
+    draw,
+    img,
+    weather: dict,
+    *,
+    y: int,
+    width: int,
+    fonts: dict,
+    icon_assets,
+    icons_cls,
+    weekdays_full: list,
+    weekdays_abbr: list,
+    forecast_weekday_format: str,
+):
+    forecast = weather.get("forecast", [])
+    if not forecast:
+        return y
+    alerts = _weather_alerts(weather)
+    y += 4
+    x0, x1 = 8, width - 8
+    draw.line([(x0, y), (x1, y)], fill=0, width=1)
+    y += 10
+    n_fc = min(len(forecast), 4)
+    fc_w = (x1 - x0) // n_fc
+    for i, fc in enumerate(forecast[:n_fc]):
+        fx = x0 + i * fc_w + fc_w // 2
+        fc_date = None
+        try:
+            dt_str = fc["datetime"]
+            fc_date = _parse_local_datetime(dt_str) if "T" in dt_str else datetime.strptime(dt_str[:10], "%Y-%m-%d")
+            if fc_date is None:
+                raise ValueError("invalid forecast datetime")
+            forecast_weekdays = weekdays_full if forecast_weekday_format == "full" else weekdays_abbr
+            dl = forecast_weekdays[fc_date.weekday()]
+        except Exception:
+            dl = f"+{i+1}"
+        draw.text((fx, y), dl, fill=0, font=fonts["fc_day"], anchor="mt")
+        fc_cond = fc.get("condition", "unknown")
+        fc_icon_ok = icon_assets.draw_weather(img, fc_cond, fx, y + 38, 46) if icon_assets else False
+        if not fc_icon_ok:
+            icons_cls.weather(draw, fx, y + 38, fc_cond, r=23)
+
+        if fc_date is not None and _forecast_day_has_alert(alerts, fc_date):
+            tx, ty = fx + 22, y + 32
+            alert_icon_ok = icon_assets.draw(img, "weather", "alert-circle", tx, ty, 18) if icon_assets else False
+            if not alert_icon_ok:
+                draw.ellipse([(tx - 7, ty - 7), (tx + 7, ty + 7)], fill=0)
+                draw.text((tx, ty - 6), "!", fill=255, font=fonts["tiny"], anchor="mt")
+
+        t_hi_v = fc.get("temperature")
+        t_lo_v = fc.get("templow")
+        t_hi = f"{int(round(float(t_hi_v)))}" if t_hi_v not in (None, "—") else "—"
+        t_lo = f"{int(round(float(t_lo_v)))}" if t_lo_v not in (None, "—") else "—"
+        draw.text((fx, y + 64), f"{t_hi}°/{t_lo}°", fill=0, font=fonts["fc_temp"], anchor="mt")
+    return y + 74
+
+
+def _draw_rooms_block(
+    draw,
+    img,
+    data: dict,
+    *,
+    y: int,
+    width: int,
+    height: int,
+    fonts: dict,
+    icon_assets,
+    icons_cls,
+    labels: dict,
+):
+    y += 10
+    draw.rectangle([(0, y), (width, y + 2)], fill=0)
+    y += 10
+
+    header_font = fonts["section"]
+    draw.text((16, y - 4), labels.get("rooms", "ROOMS"), fill=0, font=header_font)
+    col_t = width - 130
+    col_h = width - 48
+    draw.text((col_t + 20, y), labels.get("temp", "TEMP"), fill=0, font=header_font, anchor="mt")
+    draw.text((col_h, y), labels.get("hum", "HUM"), fill=0, font=header_font, anchor="mt")
+    y += 16
+    draw.line([(16, y), (width - 16, y)], fill=0, width=1)
+    y += 4
+
+    rooms = data["rooms"]
+    if not rooms:
+        draw.text((16, y + 12), labels.get("no_rooms", "No rooms configured"), fill=0, font=fonts["tiny"])
+        return y + 28
+
+    available = height - y - 30
+    row_h = max(1, min(available // len(rooms), 54))
+
+    for i, room in enumerate(rooms):
+        ry = y + i * row_h
+        ry_mid = ry + row_h // 2
+
+        if i % 2 == 0:
+            draw.rectangle([(0, ry), (width, ry + row_h - 1)], fill=248)
+
+        room_icon_ok = icon_assets.draw_room(img, room["icon"], 30, ry_mid, 24) if icon_assets else False
+        if not room_icon_ok:
+            icons_cls.room(draw, 30, ry_mid, room["icon"], s=11)
+        draw.text((54, ry_mid), room["name"], fill=0, font=fonts["room_name"], anchor="lm")
+
+        if room["temp"] is not None:
+            draw.text((col_t + 20, ry_mid), f"{room['temp']:.1f}°", fill=0, font=fonts["temp_room"], anchor="mm")
+        else:
+            draw.text((col_t + 20, ry_mid), "—.—°", fill=0, font=fonts["temp_room"], anchor="mm")
+
+        if room["hum"] is not None:
+            draw.text((col_h, ry_mid), f"{room['hum']:.0f}%", fill=0, font=fonts["hum_room"], anchor="mm")
+        else:
+            draw.text((col_h, ry_mid), "—%", fill=0, font=fonts["hum_room"], anchor="mm")
+
+        sx = width - 14
+        t, h = room["temp"], room["hum"]
+        if t is not None and h is not None:
+            if h > 65:
+                draw.ellipse([sx - 5, ry_mid - 5, sx + 5, ry_mid + 5], fill=0)
+            elif t > 24 or t < 18:
+                draw.ellipse([sx - 5, ry_mid - 5, sx + 5, ry_mid + 5], outline=0, width=2)
+                draw.ellipse([sx - 2, ry_mid - 2, sx + 2, ry_mid + 2], fill=0)
+            else:
+                draw.ellipse([sx - 5, ry_mid - 5, sx + 5, ry_mid + 5], outline=0, width=1)
+
+        draw.line([(16, ry + row_h - 1), (width - 16, ry + row_h - 1)], fill=200, width=1)
+    return y + len(rooms) * row_h
+
+
 def render_dashboard(
     data: dict,
     now: datetime,
@@ -229,6 +450,7 @@ def render_dashboard(
     condition_labels: dict,
     intraday_labels: list,
     labels: dict,
+    blocks: list,
     weekdays_full: list,
     weekdays_abbr: list,
     months_full: list,
@@ -260,152 +482,54 @@ def render_dashboard(
         header_month_format=header_month_format,
     )
     y = header_h
-
-    y += 6
     weather = data["weather"]
-    cond = weather.get("condition", "unknown")
-    out_temp = weather.get("temperature")
-    out_hum = weather.get("humidity")
-    wind = weather.get("wind_speed")
-    uv = weather.get("uv_index")
-    dayparts = weather.get("dayparts", {}) if isinstance(weather, dict) else {}
+    y += 6
 
-    draw.text((16, y), labels.get("outdoor", "OUTDOOR"), fill=0, font=fonts["section"])
-    y += 12
+    body_blocks = [block for block in blocks if block in ("outdoor", "forecast", "rooms")]
+    for block in body_blocks:
+        if block == "outdoor":
+            y = _draw_outdoor_block(
+                draw,
+                img,
+                weather,
+                y=y,
+                width=width,
+                fonts=fonts,
+                icon_assets=icon_assets,
+                icons_cls=icons_cls,
+                condition_labels=condition_labels,
+                intraday_labels=intraday_labels,
+                labels=labels,
+            )
+        elif block == "forecast":
+            y = _draw_forecast_block(
+                draw,
+                img,
+                weather,
+                y=y,
+                width=width,
+                fonts=fonts,
+                icon_assets=icon_assets,
+                icons_cls=icons_cls,
+                weekdays_full=weekdays_full,
+                weekdays_abbr=weekdays_abbr,
+                forecast_weekday_format=forecast_weekday_format,
+            )
+        elif block == "rooms":
+            y = _draw_rooms_block(
+                draw,
+                img,
+                data,
+                y=y,
+                width=width,
+                height=height,
+                fonts=fonts,
+                icon_assets=icon_assets,
+                icons_cls=icons_cls,
+                labels=labels,
+            )
 
-    row_y = y
-    row_h = 88
-    cond_text = condition_labels.get(cond, cond.replace("_", " ").title())
-
-    left_x = 16
-    split_x = 198
-    if out_temp is not None:
-        temp_num = f"{int(round(float(out_temp)))}"
-        num_w = int(draw.textlength(temp_num, font=fonts["temp_outdoor"]))
-        draw.text((left_x, row_y + 20), temp_num, fill=0, font=fonts["temp_outdoor"])
-        draw.text((left_x + num_w - 2, row_y + 20), "°", fill=0, font=fonts["temp_outdoor"])
-    else:
-        draw.text((left_x, row_y + 20), "—°", fill=0, font=fonts["temp_outdoor"])
-    info_x = left_x + 76
-    cond_text = _fit_text(draw, cond_text, fonts["info"], split_x - info_x - 12)
-    draw.text((info_x, row_y + 13), cond_text, fill=0, font=fonts["info"])
-    label_w = 24
-    draw.text((info_x, row_y + 27), labels.get("humidity_short", "Hu"), fill=0, font=fonts["info"])
-    draw.text((info_x + label_w, row_y + 27),
-              f"{out_hum:.0f}%" if out_hum is not None else "--%", fill=0, font=fonts["info"])
-    wind_x = info_x + 2
-    draw.text((wind_x, row_y + 40), labels.get("wind_short", "Wi"), fill=0, font=fonts["info"])
-    draw.text((wind_x + label_w, row_y + 40),
-              f"{wind:.0f} km/h" if wind is not None else "-- km/h", fill=0, font=fonts["info"])
-
-    if uv is not None:
-        uv_value = float(uv)
-        if uv_value < 3:
-            uv_level = "(low)"
-        elif uv_value < 6:
-            uv_level = "(medium)"
-        else:
-            uv_level = "(high)"
-        uv_line = f"UV {uv_value:.1f} {uv_level}"
-        uv_line = _fit_text(draw, uv_line, fonts["info"], split_x - info_x - 10)
-        draw.text((info_x, row_y + 53), uv_line, fill=0, font=fonts["info"])
-
-    # Alert display
-    alerts = _weather_alerts(weather)
-    primary_alert = alerts[0] if alerts else None
-    if primary_alert:
-        alert_text = _primary_alert_text(primary_alert)
-        # Draw alert icon starting from left_x
-        tx, ty = left_x + 6, row_y + 82
-        alert_icon_ok = icon_assets.draw(img, "weather", "alert", tx, ty, 16) if icon_assets else False
-        if not alert_icon_ok:
-            # Fallback to manual triangle
-            draw.polygon([(tx-6, ty+5), (tx, ty-5), (tx+6, ty+5)], outline=0, fill=0)
-            draw.text((tx-1, ty-4), "!", fill=255, font=fonts["tiny"])
-        
-        # Alert text with more space
-        alert_text = _fit_text(draw, alert_text.upper(), fonts["tiny"], split_x - left_x - 18)
-        draw.text((left_x + 16, ty - 8), alert_text, fill=0, font=fonts["tiny"])
-
-    sep_x = split_x - 8
-    sep_y0 = row_y + 8
-    sep_y1 = row_y + row_h - 8
-    draw.line([(sep_x, sep_y0), (sep_x, sep_y1)], fill=0, width=1)
-
-    intraday_keys = list(zip(intraday_labels, ["morning", "afternoon", "evening"]))
-    col_w = (width - split_x - 8) // 3
-    for i, (label, key) in enumerate(intraday_keys):
-        fx = split_x + i * col_w + col_w // 2
-        entry = dayparts.get(key, {}) if isinstance(dayparts, dict) else {}
-        t_min = entry.get("min") if isinstance(entry, dict) else None
-        t_max = entry.get("max") if isinstance(entry, dict) else None
-        e_cond = entry.get("condition", cond) if isinstance(entry, dict) else cond
-        mm_txt = f"{float(t_min):.0f}°/{float(t_max):.0f}°" if t_min is not None and t_max is not None else "—°/—°"
-        draw.text((fx, row_y + 2), label, fill=0, font=fonts["fc_day"], anchor="mt")
-        intraday_icon_ok = icon_assets.draw_weather(img, e_cond, fx, row_y + 40, 40) if icon_assets else False
-        if not intraday_icon_ok:
-            icons_cls.weather(draw, fx, row_y + 40, e_cond, r=20)
-        draw.text((fx, row_y + 63), mm_txt, fill=0, font=fonts["fc_temp"], anchor="mt")
-
-    y += row_h
-
-    forecast = weather.get("forecast", [])
-    if forecast:
-        y += 4
-        x0, x1 = 8, width - 8
-        draw.line([(x0, y), (x1, y)], fill=0, width=1)
-        y += 10
-        n_fc = min(len(forecast), 4)
-        fc_w = (x1 - x0) // n_fc
-        for i, fc in enumerate(forecast[:n_fc]):
-            fx = x0 + i * fc_w + fc_w // 2
-            try:
-                dt_str = fc["datetime"]
-                fc_date = _parse_local_datetime(dt_str) if "T" in dt_str else datetime.strptime(dt_str[:10], "%Y-%m-%d")
-                if fc_date is None:
-                    raise ValueError("invalid forecast datetime")
-                forecast_weekdays = weekdays_full if forecast_weekday_format == "full" else weekdays_abbr
-                dl = forecast_weekdays[fc_date.weekday()]
-            except Exception:
-                dl = f"+{i+1}"
-            draw.text((fx, y), dl, fill=0, font=fonts["fc_day"], anchor="mt")
-            fc_cond = fc.get("condition", "unknown")
-            fc_icon_ok = icon_assets.draw_weather(img, fc_cond, fx, y + 38, 46) if icon_assets else False
-            if not fc_icon_ok:
-                icons_cls.weather(draw, fx, y + 38, fc_cond, r=23)
-
-            # Alert indicator for forecast
-            if _forecast_day_has_alert(alerts, fc_date):
-                tx, ty = fx + 22, y + 32
-                alert_icon_ok = icon_assets.draw(img, "weather", "alert-circle", tx, ty, 18) if icon_assets else False
-                if not alert_icon_ok:
-                    draw.ellipse([(tx-7, ty-7), (tx+7, ty+7)], fill=0)
-                    draw.text((tx, ty-6), "!", fill=255, font=fonts["tiny"], anchor="mt")
-
-            t_hi_v = fc.get("temperature")
-            t_lo_v = fc.get("templow")
-            t_hi = f"{int(round(float(t_hi_v)))}" if t_hi_v not in (None, "—") else "—"
-            t_lo = f"{int(round(float(t_lo_v)))}" if t_lo_v not in (None, "—") else "—"
-            draw.text((fx, y + 64), f"{t_hi}°/{t_lo}°", fill=0, font=fonts["fc_temp"], anchor="mt")
-        y += 74
-
-    y += 10
-    draw.rectangle([(0, y), (width, y + 2)], fill=0)
-    y += 10
-
-    header_font = fonts["section"]
-    draw.text((16, y - 4), labels.get("rooms", "ROOMS"), fill=0, font=header_font)
-    col_t = width - 130
-    col_h = width - 48
-    draw.text((col_t + 20, y), labels.get("temp", "TEMP"), fill=0, font=header_font, anchor="mt")
-    draw.text((col_h, y), labels.get("hum", "HUM"), fill=0, font=header_font, anchor="mt")
-    y += 16
-    draw.line([(16, y), (width - 16, y)], fill=0, width=1)
-    y += 4
-
-    rooms = data["rooms"]
-    if not rooms:
-        draw.text((16, y + 12), labels.get("no_rooms", "No rooms configured"), fill=0, font=fonts["tiny"])
+    if "footer" in blocks:
         draw_footer(
             draw,
             fonts,
@@ -417,57 +541,4 @@ def render_dashboard(
             last_updated=last_updated,
             footer_debug_text=footer_debug_text,
         )
-        return img
-
-    available = height - y - 30
-    row_h = max(1, min(available // len(rooms), 54))
-
-    for i, room in enumerate(rooms):
-        ry = y + i * row_h
-        ry_mid = ry + row_h // 2
-
-        if i % 2 == 0:
-            draw.rectangle([(0, ry), (width, ry + row_h - 1)], fill=248)
-
-        room_icon_ok = icon_assets.draw_room(img, room["icon"], 30, ry_mid, 24) if icon_assets else False
-        if not room_icon_ok:
-            icons_cls.room(draw, 30, ry_mid, room["icon"], s=11)
-        draw.text((54, ry_mid), room["name"], fill=0, font=fonts["room_name"], anchor="lm")
-
-        if room["temp"] is not None:
-            draw.text((col_t + 20, ry_mid), f"{room['temp']:.1f}°", fill=0,
-                      font=fonts["temp_room"], anchor="mm")
-        else:
-            draw.text((col_t + 20, ry_mid), "—.—°", fill=0, font=fonts["temp_room"], anchor="mm")
-
-        if room["hum"] is not None:
-            draw.text((col_h, ry_mid), f"{room['hum']:.0f}%", fill=0,
-                      font=fonts["hum_room"], anchor="mm")
-        else:
-            draw.text((col_h, ry_mid), "—%", fill=0, font=fonts["hum_room"], anchor="mm")
-
-        sx = width - 14
-        t, h = room["temp"], room["hum"]
-        if t is not None and h is not None:
-            if h > 65:
-                draw.ellipse([sx - 5, ry_mid - 5, sx + 5, ry_mid + 5], fill=0)
-            elif t > 24 or t < 18:
-                draw.ellipse([sx - 5, ry_mid - 5, sx + 5, ry_mid + 5], outline=0, width=2)
-                draw.ellipse([sx - 2, ry_mid - 2, sx + 2, ry_mid + 2], fill=0)
-            else:
-                draw.ellipse([sx - 5, ry_mid - 5, sx + 5, ry_mid + 5], outline=0, width=1)
-
-        draw.line([(16, ry + row_h - 1), (width - 16, ry + row_h - 1)], fill=200, width=1)
-
-    draw_footer(
-        draw,
-        fonts,
-        now,
-        width=width,
-        height=height,
-        labels=labels,
-        footer_text_fn=footer_text_fn,
-        last_updated=last_updated,
-        footer_debug_text=footer_debug_text,
-    )
     return img

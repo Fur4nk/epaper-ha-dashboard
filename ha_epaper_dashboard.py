@@ -106,6 +106,7 @@ class DashboardSettings:
     clock_daemon_data_every_min: int = 10
     show_clock: bool = True
     footer_debug_ticks: bool = False
+    blocks: list = field(default_factory=lambda: ["outdoor", "forecast", "rooms", "footer"])
     weekdays_abbr: list = field(default_factory=lambda: list(DEFAULT_I18N["weekdays_abbr"]))
     weekdays_full: list = field(default_factory=lambda: list(DEFAULT_I18N["weekdays_full"]))
     months_abbr: list = field(default_factory=lambda: list(DEFAULT_I18N["months_abbr"]))
@@ -575,6 +576,10 @@ def build_settings(config: dict, secrets: dict, require_secrets: bool) -> Dashbo
     forecast_weekday_format = str(config.get("forecast_weekday_format", "abbr")).strip().lower()
     locale = str(config.get("locale", "en")).strip().lower() or "en"
     clock_daemon_interval_sec = _to_int(config.get("clock_daemon_interval_sec", 60), 60)
+    blocks_value = config.get("blocks", ["outdoor", "forecast", "rooms", "footer"])
+    if not isinstance(blocks_value, list):
+        log.warning("Invalid config.blocks: expected list, using default order")
+        blocks_value = ["outdoor", "forecast", "rooms", "footer"]
     full_every_cfg = config.get("clock_daemon_full_every_ticks", None)
     if full_every_cfg is None:
         full_every_cfg = config.get("clock_daemon_full_every", 240)
@@ -595,6 +600,21 @@ def build_settings(config: dict, secrets: dict, require_secrets: bool) -> Dashbo
     if forecast_weekday_format not in ("full", "abbr"):
         log.warning("Invalid forecast_weekday_format in config.json, using 'abbr'")
         forecast_weekday_format = "abbr"
+
+    allowed_blocks = {"outdoor", "forecast", "rooms", "footer"}
+    normalized_blocks = []
+    seen_blocks = set()
+    for item in blocks_value:
+        block_name = str(item).strip().lower()
+        if block_name not in allowed_blocks:
+            log.warning(f"Ignoring unknown block '{item}' in config.blocks")
+            continue
+        if block_name in seen_blocks:
+            continue
+        seen_blocks.add(block_name)
+        normalized_blocks.append(block_name)
+    if not normalized_blocks:
+        normalized_blocks = ["outdoor", "forecast", "rooms", "footer"]
 
     i18n = load_i18n_bundle(locale, I18N_DIR, log)
     weekdays_abbr = i18n["weekdays_abbr"]
@@ -638,6 +658,7 @@ def build_settings(config: dict, secrets: dict, require_secrets: bool) -> Dashbo
         clock_daemon_data_every_min=clock_daemon_data_every_min,
         show_clock=bool(config.get("show_clock", True)),
         footer_debug_ticks=bool(config.get("footer_debug_ticks", False)),
+        blocks=normalized_blocks,
         weekdays_abbr=weekdays_abbr,
         weekdays_full=weekdays_full,
         months_abbr=months_abbr,
@@ -765,6 +786,7 @@ def render(
         condition_labels=settings.condition_labels,
         intraday_labels=settings.intraday_labels,
         labels=settings.labels,
+        blocks=settings.blocks,
         weekdays_full=settings.weekdays_full,
         weekdays_abbr=settings.weekdays_abbr,
         months_full=settings.months_full,
