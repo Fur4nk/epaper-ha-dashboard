@@ -156,7 +156,7 @@ def _merge_daypart_minmax(cached_entry, new_entry):
 def _select_multiday_forecast(forecast: list, limit: int = 4):
     if not isinstance(forecast, list):
         return []
-    today = datetime.now().date()
+    tomorrow = datetime.now().date().toordinal() + 1
     selected = []
     for item in forecast:
         if not isinstance(item, dict):
@@ -164,7 +164,7 @@ def _select_multiday_forecast(forecast: list, limit: int = 4):
         dt_str = item.get("datetime")
         if dt_str:
             fc_dt = _parse_local_datetime(dt_str)
-            if fc_dt is not None and fc_dt.date() == today:
+            if fc_dt is not None and fc_dt.date().toordinal() < tomorrow:
                 continue
         selected.append(item)
         if len(selected) >= limit:
