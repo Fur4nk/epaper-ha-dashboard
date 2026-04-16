@@ -34,6 +34,26 @@ Room object fields:
 - `temp`: temperature sensor entity id.
 - `hum`: humidity sensor entity id.
 
+Alternative room format for custom columns:
+
+- `metrics`: ordered list of up to 3 values shown for each room.
+
+Metric object fields:
+
+- `key`: stable identifier (example `temp`, `hum`, `co2`)
+- `label`: optional custom column header text
+- `label_key`: optional i18n key; defaults to `key`
+- `entity`: HA entity id
+- `decimals`: optional number of decimals
+- `unit`: optional suffix appended to the rendered value
+
+Notes:
+
+- If `metrics` is omitted, the dashboard falls back to legacy `temp` / `hum`.
+- If `metrics` is present, the room table headers and values are taken from it.
+- If `label` is omitted, the dashboard tries the current locale bundle with `label_key` / `key`.
+- Status dots still use `temp` / `hum` semantics when available, so legacy rooms keep the same behavior.
+
 ### Optional weather/sun fields
 
 - `outdoor_temp`

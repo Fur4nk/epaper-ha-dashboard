@@ -121,6 +121,57 @@ class DashboardSettings:
         )
     )
 
+
+def _normalize_room_metric(metric: dict):
+    if not isinstance(metric, dict):
+        return None
+    key = str(metric.get("key", "")).strip().lower()
+    entity = str(metric.get("entity", "")).strip()
+    if not key or not entity:
+        return None
+    label = str(metric.get("label", "")).strip()
+    label_key = str(metric.get("label_key", key)).strip().lower() or key
+    decimals = max(0, _to_int(metric.get("decimals", 0), 0))
+    unit = str(metric.get("unit", "")).strip()
+    return {
+        "key": key,
+        "label": label,
+        "label_key": label_key,
+        "entity": entity,
+        "decimals": decimals,
+        "unit": unit,
+    }
+
+
+def _normalize_room(room: dict):
+    if not isinstance(room, dict):
+        return None
+    name = str(room.get("name", "")).strip()
+    if not name:
+        return None
+    icon = str(room.get("icon", "room")).strip() or "room"
+    metrics = []
+    raw_metrics = room.get("metrics", [])
+    if isinstance(raw_metrics, list):
+        for metric in raw_metrics:
+            normalized = _normalize_room_metric(metric)
+            if normalized:
+                metrics.append(normalized)
+    temp_entity = str(room.get("temp", "")).strip()
+    hum_entity = str(room.get("hum", "")).strip()
+    if not metrics:
+        if temp_entity:
+            metrics.append({"key": "temp", "label": "", "label_key": "temp", "entity": temp_entity, "decimals": 1, "unit": "°"})
+        if hum_entity:
+            metrics.append({"key": "hum", "label": "", "label_key": "hum", "entity": hum_entity, "decimals": 0, "unit": "%"})
+    return {
+        "name": name,
+        "icon": icon,
+        "temp": temp_entity,
+        "hum": hum_entity,
+        "metrics": metrics,
+    }
+
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  LOGGING                                                                 ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
@@ -506,13 +557,32 @@ def demo_data() -> dict:
     secondary_expires = secondary_onset + timedelta(days=1, hours=13, minutes=59, seconds=59)
     return {
         "rooms": [
-            {"name": "Cucina",      "icon": "kitchen",    "temp": 22.4, "hum": 48},
-            {"name": "Soggiorno",   "icon": "livingroom", "temp": 21.8, "hum": 45},
-            {"name": "Camera",      "icon": "bedroom",    "temp": 20.3, "hum": 52},
-            {"name": "Cameretta",   "icon": "childroom",  "temp": 21.0, "hum": 50},
-            {"name": "Bagno",       "icon": "bathroom",   "temp": 23.1, "hum": 68},
-            {"name": "Lavanderia",  "icon": "laundry",    "temp": 18.7, "hum": 62},
-            {"name": "Sgabuzzino",  "icon": "storage",    "temp": 17.3, "hum": 55},
+            {
+                "name": "Cucina",
+                "icon": "kitchen",
+                "temp": 22.4,
+                "hum": 48,
+                "metrics": [
+                    {"key": "temp", "label": "", "label_key": "temp", "unit": "°", "decimals": 1, "value": 22.4, "raw": 22.4},
+                    {"key": "hum", "label": "", "label_key": "hum", "unit": "%", "decimals": 0, "value": 48, "raw": 48},
+                ],
+            },
+            {
+                "name": "Soggiorno",
+                "icon": "livingroom",
+                "temp": 21.8,
+                "hum": 45,
+                "metrics": [
+                    {"key": "temp", "label": "", "label_key": "temp", "unit": "°", "decimals": 1, "value": 21.8, "raw": 21.8},
+                    {"key": "hum", "label": "", "label_key": "hum", "unit": "%", "decimals": 0, "value": 45, "raw": 45},
+                    {"key": "co2", "label": "CO2", "label_key": "co2", "unit": "ppm", "decimals": 0, "value": 612, "raw": 612},
+                ],
+            },
+            {"name": "Camera",      "icon": "bedroom",    "temp": 20.3, "hum": 52, "metrics": [{"key": "temp", "label": "", "label_key": "temp", "unit": "°", "decimals": 1, "value": 20.3, "raw": 20.3}, {"key": "hum", "label": "", "label_key": "hum", "unit": "%", "decimals": 0, "value": 52, "raw": 52}]},
+            {"name": "Cameretta",   "icon": "childroom",  "temp": 21.0, "hum": 50, "metrics": [{"key": "temp", "label": "", "label_key": "temp", "unit": "°", "decimals": 1, "value": 21.0, "raw": 21.0}, {"key": "hum", "label": "", "label_key": "hum", "unit": "%", "decimals": 0, "value": 50, "raw": 50}]},
+            {"name": "Bagno",       "icon": "bathroom",   "temp": 23.1, "hum": 68, "metrics": [{"key": "temp", "label": "", "label_key": "temp", "unit": "°", "decimals": 1, "value": 23.1, "raw": 23.1}, {"key": "hum", "label": "", "label_key": "hum", "unit": "%", "decimals": 0, "value": 68, "raw": 68}]},
+            {"name": "Lavanderia",  "icon": "laundry",    "temp": 18.7, "hum": 62, "metrics": [{"key": "temp", "label": "", "label_key": "temp", "unit": "°", "decimals": 1, "value": 18.7, "raw": 18.7}, {"key": "hum", "label": "", "label_key": "hum", "unit": "%", "decimals": 0, "value": 62, "raw": 62}]},
+            {"name": "Sgabuzzino",  "icon": "storage",    "temp": 17.3, "hum": 55, "metrics": [{"key": "temp", "label": "", "label_key": "temp", "unit": "°", "decimals": 1, "value": 17.3, "raw": 17.3}, {"key": "hum", "label": "", "label_key": "hum", "unit": "%", "decimals": 0, "value": 55, "raw": 55}]},
         ],
         "weather": {
             "condition": "partlycloudy", "temperature": 8.2, "humidity": 72, "wind_speed": 12, "uv_index": 4.5,
@@ -571,6 +641,11 @@ def build_settings(config: dict, secrets: dict, require_secrets: bool) -> Dashbo
     if not isinstance(rooms_value, list):
         log.warning("Invalid config.rooms: expected list, using empty list")
         rooms_value = []
+    normalized_rooms = []
+    for room in rooms_value:
+        normalized_room = _normalize_room(room)
+        if normalized_room:
+            normalized_rooms.append(normalized_room)
     header_weekday_format = str(config.get("header_weekday_format", "full")).strip().lower()
     header_month_format = str(config.get("header_month_format", "full")).strip().lower()
     forecast_weekday_format = str(config.get("forecast_weekday_format", "abbr")).strip().lower()
@@ -631,7 +706,7 @@ def build_settings(config: dict, secrets: dict, require_secrets: bool) -> Dashbo
     return DashboardSettings(
         ha_url=ha_url,
         ha_token=ha_token,
-        rooms=rooms_value,
+        rooms=normalized_rooms,
         weather_entity=str(config.get("weather_entity", "")).strip(),
         weather_alert_entity=str(config.get("weather_alert_entity", "")).strip(),
         outdoor_temp=str(config.get("outdoor_temp", "")).strip(),

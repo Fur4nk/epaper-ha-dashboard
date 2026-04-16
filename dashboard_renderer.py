@@ -378,21 +378,53 @@ def _draw_rooms_block(
     icons_cls,
     labels: dict,
 ):
+    def _room_metrics(room: dict):
+        metrics = room.get("metrics", []) if isinstance(room.get("metrics"), list) else []
+        out = []
+        for metric in metrics[:3]:
+            if not isinstance(metric, dict):
+                continue
+            key = str(metric.get("key", "")).strip().lower()
+            label = str(metric.get("label", "")).strip()
+            label_key = str(metric.get("label_key", key)).strip().lower() or key
+            if not label:
+                label = str(labels.get(label_key, key.upper()))
+            value = metric.get("value")
+            decimals = int(metric.get("decimals", 0) or 0)
+            unit = str(metric.get("unit", "")).strip()
+            if value is None:
+                value_text = "—"
+            elif isinstance(value, (int, float)):
+                value_text = f"{float(value):.{max(0, decimals)}f}"
+            else:
+                value_text = str(value)
+            out.append({"key": key, "label": label, "value_text": f"{value_text}{unit}"})
+        if out:
+            return out
+        return [
+            {"key": "temp", "label": labels.get("temp", "TEMP"), "value_text": f"{room['temp']:.1f}°" if room.get("temp") is not None else "—.—°"},
+            {"key": "hum", "label": labels.get("hum", "HUM"), "value_text": f"{room['hum']:.0f}%" if room.get("hum") is not None else "—%"},
+        ]
+
     y += 10
     draw.rectangle([(0, y), (width, y + 2)], fill=0)
     y += 10
 
+    rooms = data["rooms"]
+    room_metrics = [_room_metrics(room) for room in rooms if isinstance(room, dict)]
+    header_metrics = room_metrics[0][:3] if room_metrics else []
     header_font = fonts["section"]
     draw.text((16, y - 4), labels.get("rooms", "ROOMS"), fill=0, font=header_font)
-    col_t = width - 130
-    col_h = width - 48
-    draw.text((col_t + 20, y), labels.get("temp", "TEMP"), fill=0, font=header_font, anchor="mt")
-    draw.text((col_h, y), labels.get("hum", "HUM"), fill=0, font=header_font, anchor="mt")
+    metrics_area_x0 = width - 180
+    metrics_area_x1 = width - 20
+    metric_cols = max(1, len(header_metrics))
+    col_centers = [int(metrics_area_x0 + ((i + 0.5) * (metrics_area_x1 - metrics_area_x0) / metric_cols)) for i in range(metric_cols)]
+    for idx, metric in enumerate(header_metrics):
+        draw.text((col_centers[idx], y), metric["label"], fill=0, font=header_font, anchor="mt")
     y += 16
     draw.line([(16, y), (width - 16, y)], fill=0, width=1)
     y += 4
 
-    rooms = data["rooms"]
     if not rooms:
         draw.text((16, y + 12), labels.get("no_rooms", "No rooms configured"), fill=0, font=fonts["tiny"])
         return y + 28
@@ -403,6 +435,7 @@ def _draw_rooms_block(
     for i, room in enumerate(rooms):
         ry = y + i * row_h
         ry_mid = ry + row_h // 2
+        metrics = room_metrics[i][:metric_cols] if i < len(room_metrics) else []
 
         if i % 2 == 0:
             draw.rectangle([(0, ry), (width, ry + row_h - 1)], fill=248)
@@ -412,15 +445,9 @@ def _draw_rooms_block(
             icons_cls.room(draw, 30, ry_mid, room["icon"], s=11)
         draw.text((54, ry_mid), room["name"], fill=0, font=fonts["room_name"], anchor="lm")
 
-        if room["temp"] is not None:
-            draw.text((col_t + 20, ry_mid), f"{room['temp']:.1f}°", fill=0, font=fonts["temp_room"], anchor="mm")
-        else:
-            draw.text((col_t + 20, ry_mid), "—.—°", fill=0, font=fonts["temp_room"], anchor="mm")
-
-        if room["hum"] is not None:
-            draw.text((col_h, ry_mid), f"{room['hum']:.0f}%", fill=0, font=fonts["hum_room"], anchor="mm")
-        else:
-            draw.text((col_h, ry_mid), "—%", fill=0, font=fonts["hum_room"], anchor="mm")
+        for idx, metric in enumerate(metrics):
+            metric_font = fonts["temp_room"] if idx == 0 else fonts["hum_room"]
+            draw.text((col_centers[idx], ry_mid), metric["value_text"], fill=0, font=metric_font, anchor="mm")
 
         sx = width - 14
         t, h = room["temp"], room["hum"]

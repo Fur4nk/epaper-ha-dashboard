@@ -26,7 +26,15 @@
     "clock_daemon_data_every_min": 10,
     "rooms": [
         {"name": "Cucina",     "icon": "kitchen",    "temp": "sensor.temp_umi_cucina_temperature",     "hum": "sensor.temp_umi_cucina_humidity"},
-        {"name": "Soggiorno",  "icon": "livingroom", "temp": "sensor.temp_umi_soggiorno_temperature",  "hum": "sensor.temp_umi_soggiorno_humidity"},
+        {
+            "name": "Soggiorno",
+            "icon": "livingroom",
+            "metrics": [
+                {"key": "temp", "entity": "sensor.temp_umi_soggiorno_temperature", "decimals": 1, "unit": "°"},
+                {"key": "hum", "entity": "sensor.temp_umi_soggiorno_humidity", "decimals": 0, "unit": "%"},
+                {"key": "co2", "label": "CO2", "entity": "sensor.soggiorno_co2", "decimals": 0, "unit": "ppm"}
+            ]
+        },
         {"name": "Camera",     "icon": "bedroom",    "temp": "sensor.temp_umi_camera_temperature",     "hum": "sensor.temp_umi_camera_humidity"},
         {"name": "Cameretta",  "icon": "childroom",  "temp": "sensor.temp_umi_cameretta_temperature",  "hum": "sensor.temp_umi_cameretta_humidity"},
         {"name": "Bagno",      "icon": "bathroom",   "temp": "sensor.temp_umi_bagno_temperature",      "hum": "sensor.temp_umi_bagno_humidity"},

@@ -76,10 +76,21 @@ def build_data_snapshot(data: dict, to_float):
     for room in rooms:
         if not isinstance(room, dict):
             continue
+        metrics = room.get("metrics", []) if isinstance(room.get("metrics"), list) else []
+        metric_values = []
+        for metric in metrics[:3]:
+            if not isinstance(metric, dict):
+                continue
+            metric_values.append(
+                (
+                    str(metric.get("key", "")),
+                    _rounded_or_none(metric.get("value"), to_float, int(metric.get("decimals", 0) or 0)),
+                )
+            )
         t = _rounded_or_none(room.get("temp"), to_float, 1)
         h = _rounded_or_none(room.get("hum"), to_float, 0)
         status = _room_status_key(room.get("temp"), room.get("hum"), to_float)
-        room_values.append((t, h, status))
+        room_values.append((tuple(metric_values), t, h, status))
 
     return {
         "outdoor": outdoor,

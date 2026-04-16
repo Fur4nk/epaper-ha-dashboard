@@ -269,6 +269,20 @@ def _primary_alert(alerts):
     return None
 
 
+def _room_metric_payload(metric: dict, value):
+    metric = metric if isinstance(metric, dict) else {}
+    numeric_value = _to_float(value)
+    return {
+        "key": str(metric.get("key", "")).strip().lower(),
+        "label": str(metric.get("label", "")).strip(),
+        "label_key": str(metric.get("label_key", metric.get("key", ""))).strip().lower(),
+        "unit": str(metric.get("unit", "")).strip(),
+        "decimals": int(metric.get("decimals", 0)) if str(metric.get("decimals", "")).strip() else 0,
+        "value": numeric_value,
+        "raw": value,
+    }
+
+
 def _get_weather(
     ha_url: str,
     ha_token: str,
@@ -416,14 +430,30 @@ def fetch_all_data(
 ) -> dict:
     out_rooms = []
     for room in rooms:
+        metrics = []
+        for metric in room.get("metrics", []) if isinstance(room, dict) else []:
+            entity_id = str(metric.get("entity", "")).strip()
+            metric_value = _get_state(ha_url, ha_token, entity_id, log)
+            metrics.append(_room_metric_payload(metric, metric_value))
         t = _get_state(ha_url, ha_token, room["temp"], log)
         h = _get_state(ha_url, ha_token, room["hum"], log)
+        if not room.get("temp"):
+            for metric in metrics:
+                if metric.get("key") == "temp":
+                    t = metric.get("value")
+                    break
+        if not room.get("hum"):
+            for metric in metrics:
+                if metric.get("key") == "hum":
+                    h = metric.get("value")
+                    break
         out_rooms.append(
             {
                 "name": room["name"],
                 "icon": room["icon"],
                 "temp": _to_float(t),
                 "hum": _to_float(h),
+                "metrics": metrics,
             }
         )
     return {
