@@ -159,14 +159,14 @@ def build_dynamic_partial_rects(data: dict, header_h: int, width: int, height: i
         room_changes = None if changed is None else changed.get("rooms")
         if room_changes is None:
             rooms_bottom = rooms_y + len(rooms) * row_h
-            rects.append((width - 144, rooms_y, width, rooms_bottom))
+            rects.append((width - 180, rooms_y, width, rooms_bottom))
         else:
             for idx in sorted(room_changes):
                 if idx < 0 or idx >= len(rooms):
                     continue
                 y0 = rooms_y + idx * row_h
                 y1 = y0 + row_h
-                rects.append((width - 144, y0, width, y1))
+                rects.append((width - 180, y0, width, y1))
 
     footer_top = height - 76
     if changed is None or changed.get("footer"):
