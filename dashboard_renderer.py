@@ -47,6 +47,12 @@ def _text_size(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont):
     return r - l, b - t
 
 
+def _format_temp_range(t_low, t_high) -> str:
+    hi = f"{int(round(float(t_high)))}" if t_high not in (None, "—") else "—"
+    lo = f"{int(round(float(t_low)))}" if t_low not in (None, "—") else "—"
+    return f"{hi}°/{lo}°"
+
+
 def _parse_local_datetime(dt_str: str):
     if not dt_str:
         return None
@@ -333,7 +339,7 @@ def _draw_outdoor_block(
         t_min = entry.get("min") if isinstance(entry, dict) else None
         t_max = entry.get("max") if isinstance(entry, dict) else None
         e_cond = entry.get("condition", cond) if isinstance(entry, dict) else cond
-        mm_txt = f"{float(t_min):.0f}°/{float(t_max):.0f}°" if t_min is not None and t_max is not None else "—°/—°"
+        mm_txt = _format_temp_range(t_min, t_max)
         draw.text((fx, row_y + 2), label, fill=0, font=fonts["fc_day"], anchor="mt")
         intraday_icon_ok = icon_assets.draw_weather(img, e_cond, fx, row_y + 40, 40) if icon_assets else False
         if not intraday_icon_ok:
@@ -393,9 +399,7 @@ def _draw_forecast_block(
 
         t_hi_v = fc.get("temperature")
         t_lo_v = fc.get("templow")
-        t_hi = f"{int(round(float(t_hi_v)))}" if t_hi_v not in (None, "—") else "—"
-        t_lo = f"{int(round(float(t_lo_v)))}" if t_lo_v not in (None, "—") else "—"
-        draw.text((fx, y + 64), f"{t_hi}°/{t_lo}°", fill=0, font=fonts["fc_temp"], anchor="mt")
+        draw.text((fx, y + 64), _format_temp_range(t_lo_v, t_hi_v), fill=0, font=fonts["fc_temp"], anchor="mt")
     return y + 74
 
 

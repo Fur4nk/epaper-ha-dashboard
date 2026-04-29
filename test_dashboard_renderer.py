@@ -2,7 +2,7 @@ import unittest
 
 from PIL import Image, ImageDraw, ImageFont
 
-from dashboard_renderer import _fit_text, _primary_alert_text
+from dashboard_renderer import _fit_text, _format_temp_range, _primary_alert_text
 
 
 class PrimaryAlertTextTests(unittest.TestCase):
@@ -33,6 +33,18 @@ class FitTextTests(unittest.TestCase):
 
         self.assertLessEqual(draw.textlength(text, font=font), max_width)
         self.assertTrue(text.endswith("…"))
+
+
+class FormatTempRangeTests(unittest.TestCase):
+    def test_formats_high_before_low(self):
+        text = _format_temp_range(18.2, 25.6)
+
+        self.assertEqual(text, "26°/18°")
+
+    def test_uses_placeholder_for_missing_values(self):
+        text = _format_temp_range(None, 25.6)
+
+        self.assertEqual(text, "26°/—°")
 
 
 if __name__ == "__main__":
