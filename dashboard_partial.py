@@ -5,19 +5,32 @@ def _rounded_or_none(value, to_float, digits):
     return round(parsed, digits)
 
 
-def _room_status_key(temp_v, hum_v, to_float):
+def _room_status_key(
+    temp_v,
+    hum_v,
+    to_float,
+    room_temp_min: float = 18.0,
+    room_temp_max: float = 24.0,
+    room_humidity_max: float = 65.0,
+):
     t = to_float(temp_v)
     h = to_float(hum_v)
     if t is None or h is None:
         return "na"
-    if h > 65:
+    if h > room_humidity_max:
         return "high_hum"
-    if t > 24 or t < 18:
+    if t > room_temp_max or t < room_temp_min:
         return "temp_alert"
     return "ok"
 
 
-def build_data_snapshot(data: dict, to_float):
+def build_data_snapshot(
+    data: dict,
+    to_float,
+    room_temp_min: float = 18.0,
+    room_temp_max: float = 24.0,
+    room_humidity_max: float = 65.0,
+):
     weather = data.get("weather", {}) if isinstance(data, dict) else {}
     dayparts = weather.get("dayparts", {}) if isinstance(weather, dict) else {}
     forecast = weather.get("forecast", []) if isinstance(weather, dict) else []
@@ -89,7 +102,14 @@ def build_data_snapshot(data: dict, to_float):
             )
         t = _rounded_or_none(room.get("temp"), to_float, 1)
         h = _rounded_or_none(room.get("hum"), to_float, 0)
-        status = _room_status_key(room.get("temp"), room.get("hum"), to_float)
+        status = _room_status_key(
+            room.get("temp"),
+            room.get("hum"),
+            to_float,
+            room_temp_min=room_temp_min,
+            room_temp_max=room_temp_max,
+            room_humidity_max=room_humidity_max,
+        )
         room_values.append((tuple(metric_values), t, h, status))
 
     return {

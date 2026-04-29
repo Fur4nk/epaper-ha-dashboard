@@ -415,6 +415,9 @@ def _draw_rooms_block(
     icon_assets,
     icons_cls,
     labels: dict,
+    room_temp_min: float,
+    room_temp_max: float,
+    room_humidity_max: float,
 ):
     def _room_metrics(room: dict):
         metrics = room.get("metrics", []) if isinstance(room.get("metrics"), list) else []
@@ -490,9 +493,9 @@ def _draw_rooms_block(
         sx = width - 14
         t, h = room["temp"], room["hum"]
         if t is not None and h is not None:
-            if h > 65:
+            if h > room_humidity_max:
                 draw.ellipse([sx - 5, ry_mid - 5, sx + 5, ry_mid + 5], fill=0)
-            elif t > 24 or t < 18:
+            elif t > room_temp_max or t < room_temp_min:
                 draw.ellipse([sx - 5, ry_mid - 5, sx + 5, ry_mid + 5], outline=0, width=2)
                 draw.ellipse([sx - 2, ry_mid - 2, sx + 2, ry_mid + 2], fill=0)
             else:
@@ -528,6 +531,9 @@ def render_dashboard(
     footer_text_fn,
     last_updated: datetime = None,
     footer_debug_text: str = "",
+    room_temp_min: float = 18.0,
+    room_temp_max: float = 24.0,
+    room_humidity_max: float = 65.0,
 ) -> Image.Image:
     img = Image.new("1", (width, height), 255)
     draw = ImageDraw.Draw(img)
@@ -592,6 +598,9 @@ def render_dashboard(
                 icon_assets=icon_assets,
                 icons_cls=icons_cls,
                 labels=labels,
+                room_temp_min=room_temp_min,
+                room_temp_max=room_temp_max,
+                room_humidity_max=room_humidity_max,
             )
 
     if "footer" in blocks:

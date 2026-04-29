@@ -1,9 +1,36 @@
 import unittest
 
-from dashboard_partial import build_dynamic_partial_rects
+from dashboard_partial import build_data_snapshot, build_dynamic_partial_rects
+
+
+def _to_float(value):
+    try:
+        return float(value)
+    except Exception:
+        return None
 
 
 class BuildDynamicPartialRectsTests(unittest.TestCase):
+    def test_room_snapshot_status_uses_custom_comfort_thresholds(self):
+        data = {
+            "weather": {},
+            "rooms": [
+                {"name": "Studio", "temp": 25.0, "hum": 60, "metrics": []},
+            ],
+        }
+
+        default_snapshot = build_data_snapshot(data, _to_float)
+        custom_snapshot = build_data_snapshot(
+            data,
+            _to_float,
+            room_temp_min=18.0,
+            room_temp_max=26.0,
+            room_humidity_max=65.0,
+        )
+
+        self.assertEqual(default_snapshot["rooms"][0][3], "temp_alert")
+        self.assertEqual(custom_snapshot["rooms"][0][3], "ok")
+
     def test_alert_partial_refresh_covers_outdoor_warning_line(self):
         data = {
             "weather": {

@@ -100,6 +100,13 @@ Examples:
 - `footer_quote` / `footer_source` (manual fallback)
 - `footer_debug_ticks` (`true` to show a small debug counter at bottom-right; resets to `0` on each full refresh)
 
+### Room comfort thresholds
+
+- `room_temp_min` (default `18`)
+- `room_temp_max` (default `24`)
+- `room_humidity_max` (default `65`)
+- These thresholds drive the room status dot and partial-refresh change detection.
+
 ### Clock daemon / refresh options
 
 - `clock_partial_refresh` (enable partial refresh where available)

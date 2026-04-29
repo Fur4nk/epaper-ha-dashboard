@@ -106,6 +106,9 @@ class DashboardSettings:
     clock_daemon_data_every_min: int = 10
     show_clock: bool = True
     footer_debug_ticks: bool = False
+    room_temp_min: float = 18.0
+    room_temp_max: float = 24.0
+    room_humidity_max: float = 65.0
     blocks: list = field(default_factory=lambda: ["outdoor", "forecast", "rooms", "footer"])
     weekdays_abbr: list = field(default_factory=lambda: list(DEFAULT_I18N["weekdays_abbr"]))
     weekdays_full: list = field(default_factory=lambda: list(DEFAULT_I18N["weekdays_full"]))
@@ -509,6 +512,11 @@ def _to_float(v):
         return None
 
 
+def _to_float_default(value, default: float) -> float:
+    parsed = _to_float(value)
+    return default if parsed is None else parsed
+
+
 def _portrait_rect_to_epd_rect(rect, portrait_w: int, portrait_h: int):
     x0, y0, x1, y1 = rect
     x0 = max(0, min(portrait_w - 1, int(x0)))
@@ -665,6 +673,9 @@ def build_settings(config: dict, secrets: dict, require_secrets: bool) -> Dashbo
             )
     clock_daemon_full_every = _to_int(full_every_cfg, 240)
     clock_daemon_data_every_min = _to_int(config.get("clock_daemon_data_every_min", 10), 10)
+    room_temp_min = _to_float_default(config.get("room_temp_min", 18.0), 18.0)
+    room_temp_max = _to_float_default(config.get("room_temp_max", 24.0), 24.0)
+    room_humidity_max = _to_float_default(config.get("room_humidity_max", 65.0), 65.0)
 
     if header_weekday_format not in ("full", "abbr"):
         log.warning("Invalid header_weekday_format in config.json, using 'full'")
@@ -733,6 +744,9 @@ def build_settings(config: dict, secrets: dict, require_secrets: bool) -> Dashbo
         clock_daemon_data_every_min=clock_daemon_data_every_min,
         show_clock=bool(config.get("show_clock", True)),
         footer_debug_ticks=bool(config.get("footer_debug_ticks", False)),
+        room_temp_min=room_temp_min,
+        room_temp_max=room_temp_max,
+        room_humidity_max=room_humidity_max,
         blocks=normalized_blocks,
         weekdays_abbr=weekdays_abbr,
         weekdays_full=weekdays_full,
@@ -874,6 +888,9 @@ def render(
         footer_text_fn=lambda footer_now: footer_text(settings, footer_now),
         last_updated=last_updated,
         footer_debug_text=footer_debug_text,
+        room_temp_min=settings.room_temp_min,
+        room_temp_max=settings.room_temp_max,
+        room_humidity_max=settings.room_humidity_max,
     )
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
@@ -936,7 +953,13 @@ def run_clock_daemon(
         init_now = datetime.now()
         startup_debug_text = "0" if settings.footer_debug_ticks else ""
         img = render(initial_data, settings, icon_assets, now=init_now, last_updated=init_now, footer_debug_text=startup_debug_text)
-        last_data_snapshot = build_data_snapshot(initial_data, _to_float)
+        last_data_snapshot = build_data_snapshot(
+            initial_data,
+            _to_float,
+            room_temp_min=settings.room_temp_min,
+            room_temp_max=settings.room_temp_max,
+            room_humidity_max=settings.room_humidity_max,
+        )
     except Exception as e:
         log.warning(f"Initial render failed, using cached image: {e}")
         update_clock_header(img, settings)
@@ -989,7 +1012,13 @@ def run_clock_daemon(
                 if do_data:
                     data = demo_data() if demo else fetch_all_data(settings)
                     new_img = render(data, settings, icon_assets, now=now, last_updated=now, footer_debug_text=debug_text)
-                    curr_snapshot = build_data_snapshot(data, _to_float)
+                    curr_snapshot = build_data_snapshot(
+                        data,
+                        _to_float,
+                        room_temp_min=settings.room_temp_min,
+                        room_temp_max=settings.room_temp_max,
+                        room_humidity_max=settings.room_humidity_max,
+                    )
                     changed = diff_snapshots(last_data_snapshot, curr_snapshot)
                     has_data_change = bool(
                         changed.get("outdoor")

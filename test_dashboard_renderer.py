@@ -76,5 +76,22 @@ class DemoRenderTests(unittest.TestCase):
         self.assertIsNotNone(img.getbbox(), "Rendered dashboard preview should not be blank")
 
 
+class SettingsTests(unittest.TestCase):
+    def test_build_settings_parses_room_comfort_thresholds(self):
+        settings = build_settings(
+            {
+                "room_temp_min": 19,
+                "room_temp_max": 25.5,
+                "room_humidity_max": 60,
+            },
+            {},
+            require_secrets=False,
+        )
+
+        self.assertEqual(settings.room_temp_min, 19.0)
+        self.assertEqual(settings.room_temp_max, 25.5)
+        self.assertEqual(settings.room_humidity_max, 60.0)
+
+
 if __name__ == "__main__":
     unittest.main()

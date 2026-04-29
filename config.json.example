@@ -24,6 +24,9 @@
     "clock_daemon_interval_sec": 60,
     "clock_daemon_full_every_ticks": 240,
     "clock_daemon_data_every_min": 10,
+    "room_temp_min": 18,
+    "room_temp_max": 24,
+    "room_humidity_max": 65,
     "rooms": [
         {"name": "Cucina",     "icon": "kitchen",    "temp": "sensor.temp_umi_cucina_temperature",     "hum": "sensor.temp_umi_cucina_humidity"},
         {
