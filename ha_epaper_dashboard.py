@@ -587,9 +587,9 @@ def demo_data() -> dict:
         "weather": {
             "condition": "partlycloudy", "temperature": 8.2, "humidity": 72, "wind_speed": 12, "uv_index": 4.5,
             "dayparts": {
-                "morning": {"temperature": 7.0, "condition": "cloudy"},
-                "afternoon": {"temperature": 12.0, "condition": "partlycloudy"},
-                "evening": {"temperature": 9.0, "condition": "rainy"},
+                "morning": {"min": 6.0, "max": 9.0, "condition": "cloudy"},
+                "afternoon": {"min": 10.0, "max": 14.0, "condition": "partlycloudy"},
+                "evening": {"min": 7.0, "max": 10.0, "condition": "rainy"},
             },
             "forecast": [
                 {"datetime": forecast_days[0].isoformat(), "condition": "cloudy", "temperature": 11, "templow": 5},

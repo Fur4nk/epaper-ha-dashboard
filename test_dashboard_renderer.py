@@ -1,8 +1,10 @@
 import unittest
+from datetime import datetime
 
 from PIL import Image, ImageDraw, ImageFont
 
 from dashboard_renderer import _fit_text, _format_temp_range, _primary_alert_text
+from ha_epaper_dashboard import IconAssets, W, H, build_settings, demo_data, render
 
 
 class PrimaryAlertTextTests(unittest.TestCase):
@@ -45,6 +47,33 @@ class FormatTempRangeTests(unittest.TestCase):
         text = _format_temp_range(None, 25.6)
 
         self.assertEqual(text, "26°/—°")
+
+
+class DemoRenderTests(unittest.TestCase):
+    def test_demo_intraday_data_exercises_min_max_rendering(self):
+        data = demo_data()
+
+        for key in ("morning", "afternoon", "evening"):
+            self.assertIn("min", data["weather"]["dayparts"][key])
+            self.assertIn("max", data["weather"]["dayparts"][key])
+
+    def test_demo_dashboard_renders_nonblank_preview_without_network_quote(self):
+        data = demo_data()
+        settings = build_settings(
+            {
+                "footer_daily_quote": False,
+                "footer_quote": "Render smoke test",
+                "footer_source": "unittest",
+            },
+            {},
+            require_secrets=False,
+        )
+
+        img = render(data, settings, IconAssets("/missing-icons"), now=datetime(2026, 4, 29, 9, 30), last_updated=datetime(2026, 4, 29, 9, 30))
+
+        self.assertEqual(img.size, (W, H))
+        self.assertEqual(img.mode, "1")
+        self.assertIsNotNone(img.getbbox(), "Rendered dashboard preview should not be blank")
 
 
 if __name__ == "__main__":
