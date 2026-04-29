@@ -4,12 +4,18 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 def _fit_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_w: int) -> str:
-    out = (text or "").strip()
-    while out and draw.textlength(out, font=font) > max_w:
+    original = (text or "").strip()
+    if draw.textlength(original, font=font) <= max_w:
+        return original
+
+    ellipsis = "…"
+    if draw.textlength(ellipsis, font=font) > max_w:
+        return ""
+
+    out = original
+    while out and draw.textlength(f"{out}{ellipsis}", font=font) > max_w:
         out = out[:-1].rstrip()
-    if out != (text or "").strip():
-        out = out[:-1].rstrip() + "…"
-    return out
+    return f"{out}{ellipsis}" if out else ellipsis
 
 
 def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_w: int, max_lines: int):
@@ -74,12 +80,39 @@ def _weather_alerts(weather: dict):
     return []
 
 
+_DISPLAY_ALERT_SEVERITIES = {
+    "yellow",
+    "orange",
+    "red",
+    "minor",
+    "moderate",
+    "severe",
+    "extreme",
+    "warning",
+    "level1",
+    "level2",
+    "level3",
+    "level4",
+    "1",
+    "2",
+    "3",
+    "4",
+}
+
+
+def _strip_display_alert_severity(text: str) -> str:
+    parts = (text or "").strip().split(maxsplit=1)
+    if len(parts) == 2 and parts[0].strip(":").lower() in _DISPLAY_ALERT_SEVERITIES:
+        return parts[1].strip()
+    return (text or "").strip()
+
+
 def _primary_alert_text(alert: dict):
     if not isinstance(alert, dict):
         return ""
     severity = str(alert.get("severity", "")).strip()
-    label = str(alert.get("event") or alert.get("headline") or "Alert").strip()
-    if severity and not label.lower().startswith(severity.lower()):
+    label = _strip_display_alert_severity(str(alert.get("event") or alert.get("headline") or "Alert"))
+    if severity and severity.lower() not in _DISPLAY_ALERT_SEVERITIES and not label.lower().startswith(severity.lower()):
         return f"{severity} {label}"
     return label
 
@@ -278,13 +311,14 @@ def _draw_outdoor_block(
 
     if primary_alert:
         alert_text = _primary_alert_text(primary_alert)
-        tx, ty = left_x + 6, row_y + 82
+        tx, ty = left_x + 6, row_y + 80
         alert_icon_ok = icon_assets.draw(img, "weather", "alert", tx, ty, 16) if icon_assets else False
         if not alert_icon_ok:
             draw.polygon([(tx - 6, ty + 5), (tx, ty - 5), (tx + 6, ty + 5)], outline=0, fill=0)
             draw.text((tx - 1, ty - 4), "!", fill=255, font=fonts["tiny"])
-        alert_text = _fit_text(draw, alert_text.upper(), fonts["tiny"], split_x - left_x - 18)
-        draw.text((left_x + 16, ty - 8), alert_text, fill=0, font=fonts["tiny"])
+        alert_font = fonts["info"]
+        alert_text = _fit_text(draw, alert_text.upper(), alert_font, split_x - left_x - 18)
+        draw.text((left_x + 16, ty - 8), alert_text, fill=0, font=alert_font)
 
     sep_x = split_x - 8
     sep_y0 = row_y + 8
