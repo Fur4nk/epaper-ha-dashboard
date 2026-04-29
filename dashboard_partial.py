@@ -144,7 +144,7 @@ def build_dynamic_partial_rects(data: dict, header_h: int, width: int, height: i
         y += 10
         fc_top = y
         if changed is None or changed.get("forecast") or changed.get("alert"):
-            rects.append((8, fc_top + 20, width - 8, fc_top + 64))
+            rects.append((8, fc_top, width - 8, fc_top + 74))
         y += 64
 
     y += 10
