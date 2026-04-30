@@ -50,7 +50,7 @@ class BuildDynamicPartialRectsTests(unittest.TestCase):
 
         rects = build_dynamic_partial_rects(data, header_h=56, width=480, height=800, changed=changed)
 
-        self.assertIn((12, 74, 190, 162), rects)
+        self.assertIn((12, 74, 190, 174), rects)
 
     def test_forecast_partial_refresh_covers_temperature_line(self):
         data = {
@@ -73,8 +73,32 @@ class BuildDynamicPartialRectsTests(unittest.TestCase):
         rects = build_dynamic_partial_rects(data, header_h=56, width=480, height=800, changed=changed)
         forecast_rect = rects[0]
 
-        self.assertLessEqual(forecast_rect[1], 176, "Forecast partial refresh must cover weekday labels")
-        self.assertGreaterEqual(forecast_rect[3], 246, "Forecast partial refresh must cover temperature text")
+        self.assertLessEqual(forecast_rect[1], 188, "Forecast partial refresh must cover weekday labels")
+        self.assertGreaterEqual(forecast_rect[3], 270, "Forecast partial refresh must cover temperature text")
+
+    def test_room_partial_refresh_starts_after_enlarged_weather_blocks(self):
+        data = {
+            "weather": {
+                "forecast": [
+                    {"datetime": "2026-04-30", "condition": "sunny", "temperature": 24, "templow": 16},
+                ],
+            },
+            "rooms": [
+                {"name": "Cucina", "temp": 20.1, "hum": 50, "metrics": [{"key": "temp", "value": 20.1, "decimals": 1}]},
+            ],
+        }
+        changed = {
+            "outdoor": False,
+            "intraday": False,
+            "forecast": False,
+            "alert": False,
+            "rooms": {0},
+            "footer": False,
+        }
+
+        rects = build_dynamic_partial_rects(data, header_h=56, width=480, height=800, changed=changed)
+
+        self.assertEqual(rects[0][1], 310)
 
     def test_room_partial_refresh_covers_full_metrics_area(self):
         data = {

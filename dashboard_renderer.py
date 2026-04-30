@@ -2,6 +2,9 @@ from datetime import datetime
 
 from PIL import Image, ImageDraw, ImageFont
 
+OUTDOOR_ROW_H = 100
+FORECAST_ROW_H = 82
+
 
 def _fit_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_w: int) -> str:
     original = (text or "").strip()
@@ -281,7 +284,7 @@ def _draw_outdoor_block(
     draw.text((16, y), labels.get("outdoor", "OUTDOOR"), fill=0, font=fonts["section"])
     y += 12
     row_y = y
-    row_h = 88
+    row_h = OUTDOOR_ROW_H
     cond_text = condition_labels.get(cond, cond.replace("_", " ").title())
     left_x = 16
     split_x = 198
@@ -294,14 +297,15 @@ def _draw_outdoor_block(
     else:
         draw.text((left_x, row_y + 20), "—°", fill=0, font=fonts["temp_outdoor"])
     info_x = left_x + 76
+    info_y = row_y + 20
     cond_text = _fit_text(draw, cond_text, fonts["info"], split_x - info_x - 12)
-    draw.text((info_x, row_y + 13), cond_text, fill=0, font=fonts["info"])
+    draw.text((info_x, info_y), cond_text, fill=0, font=fonts["info"])
     label_w = 24
-    draw.text((info_x, row_y + 27), labels.get("humidity_short", "Hu"), fill=0, font=fonts["info"])
-    draw.text((info_x + label_w, row_y + 27), f"{out_hum:.0f}%" if out_hum is not None else "--%", fill=0, font=fonts["info"])
+    draw.text((info_x, info_y + 14), labels.get("humidity_short", "Hu"), fill=0, font=fonts["info"])
+    draw.text((info_x + label_w, info_y + 14), f"{out_hum:.0f}%" if out_hum is not None else "--%", fill=0, font=fonts["info"])
     wind_x = info_x + 2
-    draw.text((wind_x, row_y + 40), labels.get("wind_short", "Wi"), fill=0, font=fonts["info"])
-    draw.text((wind_x + label_w, row_y + 40), f"{wind:.0f} km/h" if wind is not None else "-- km/h", fill=0, font=fonts["info"])
+    draw.text((wind_x, info_y + 27), labels.get("wind_short", "Wi"), fill=0, font=fonts["info"])
+    draw.text((wind_x + label_w, info_y + 27), f"{wind:.0f} km/h" if wind is not None else "-- km/h", fill=0, font=fonts["info"])
 
     if uv is not None:
         uv_value = float(uv)
@@ -313,7 +317,7 @@ def _draw_outdoor_block(
             uv_level = "(high)"
         uv_line = f"UV {uv_value:.1f} {uv_level}"
         uv_line = _fit_text(draw, uv_line, fonts["info"], split_x - info_x - 10)
-        draw.text((info_x, row_y + 53), uv_line, fill=0, font=fonts["info"])
+        draw.text((info_x, info_y + 40), uv_line, fill=0, font=fonts["info"])
 
     if primary_alert:
         alert_text = _primary_alert_text(primary_alert)
@@ -340,11 +344,11 @@ def _draw_outdoor_block(
         t_max = entry.get("max") if isinstance(entry, dict) else None
         e_cond = entry.get("condition", cond) if isinstance(entry, dict) else cond
         mm_txt = _format_temp_range(t_min, t_max)
-        draw.text((fx, row_y + 2), label, fill=0, font=fonts["fc_day"], anchor="mt")
-        intraday_icon_ok = icon_assets.draw_weather(img, e_cond, fx, row_y + 40, 40) if icon_assets else False
+        draw.text((fx, row_y + 3), label, fill=0, font=fonts["fc_day"], anchor="mt")
+        intraday_icon_ok = icon_assets.draw_weather(img, e_cond, fx, row_y + 46, 46) if icon_assets else False
         if not intraday_icon_ok:
-            icons_cls.weather(draw, fx, row_y + 40, e_cond, r=20)
-        draw.text((fx, row_y + 63), mm_txt, fill=0, font=fonts["fc_temp"], anchor="mt")
+            icons_cls.weather(draw, fx, row_y + 46, e_cond, r=23)
+        draw.text((fx, row_y + 73), mm_txt, fill=0, font=fonts["fc_temp"], anchor="mt")
     return y + row_h
 
 
@@ -386,12 +390,12 @@ def _draw_forecast_block(
             dl = f"+{i+1}"
         draw.text((fx, y), dl, fill=0, font=fonts["fc_day"], anchor="mt")
         fc_cond = fc.get("condition", "unknown")
-        fc_icon_ok = icon_assets.draw_weather(img, fc_cond, fx, y + 38, 46) if icon_assets else False
+        fc_icon_ok = icon_assets.draw_weather(img, fc_cond, fx, y + 42, 50) if icon_assets else False
         if not fc_icon_ok:
-            icons_cls.weather(draw, fx, y + 38, fc_cond, r=23)
+            icons_cls.weather(draw, fx, y + 42, fc_cond, r=25)
 
         if fc_date is not None and _forecast_day_has_alert(alerts, fc_date):
-            tx, ty = fx + 22, y + 32
+            tx, ty = fx + 24, y + 35
             alert_icon_ok = icon_assets.draw(img, "weather", "alert-circle", tx, ty, 18) if icon_assets else False
             if not alert_icon_ok:
                 draw.ellipse([(tx - 7, ty - 7), (tx + 7, ty + 7)], fill=0)
@@ -399,8 +403,8 @@ def _draw_forecast_block(
 
         t_hi_v = fc.get("temperature")
         t_lo_v = fc.get("templow")
-        draw.text((fx, y + 64), _format_temp_range(t_lo_v, t_hi_v), fill=0, font=fonts["fc_temp"], anchor="mt")
-    return y + 74
+        draw.text((fx, y + 71), _format_temp_range(t_lo_v, t_hi_v), fill=0, font=fonts["fc_temp"], anchor="mt")
+    return y + FORECAST_ROW_H
 
 
 def _draw_rooms_block(

@@ -1,3 +1,6 @@
+from dashboard_renderer import FORECAST_ROW_H, OUTDOOR_ROW_H
+
+
 def _rounded_or_none(value, to_float, digits):
     parsed = to_float(value)
     if parsed is None:
@@ -149,7 +152,7 @@ def build_dynamic_partial_rects(data: dict, header_h: int, width: int, height: i
     y += 6
     y += 12
     row_y = y
-    row_h = 88
+    row_h = OUTDOOR_ROW_H
 
     if changed is None or changed.get("outdoor") or changed.get("alert"):
         rects.append((12, row_y, 190, row_y + row_h))
@@ -160,12 +163,12 @@ def build_dynamic_partial_rects(data: dict, header_h: int, width: int, height: i
     weather = data.get("weather", {}) if isinstance(data, dict) else {}
     forecast = weather.get("forecast", []) if isinstance(weather, dict) else []
     if forecast:
-        y += 2
+        y += 4
         y += 10
         fc_top = y
         if changed is None or changed.get("forecast") or changed.get("alert"):
-            rects.append((8, fc_top, width - 8, fc_top + 74))
-        y += 64
+            rects.append((8, fc_top, width - 8, fc_top + FORECAST_ROW_H))
+        y += FORECAST_ROW_H
 
     y += 10
     y += 10

@@ -50,6 +50,15 @@ class FormatTempRangeTests(unittest.TestCase):
 
 
 class DemoRenderTests(unittest.TestCase):
+    def test_forecast_fonts_are_large_enough_for_epaper_readability(self):
+        import ha_epaper_dashboard
+
+        fonts = ha_epaper_dashboard.load_fonts()
+
+        self.assertGreaterEqual(fonts["fc_day"].size, 16)
+        self.assertGreaterEqual(fonts["fc_temp"].size, 16)
+        self.assertIn("Bold", fonts["fc_day"].getname()[1])
+
     def test_demo_intraday_data_exercises_min_max_rendering(self):
         data = demo_data()
 
