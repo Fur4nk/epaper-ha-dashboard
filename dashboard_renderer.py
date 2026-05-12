@@ -297,7 +297,7 @@ def _draw_outdoor_block(
     else:
         draw.text((left_x, row_y + 20), "—°", fill=0, font=fonts["temp_outdoor"])
     info_x = left_x + 76
-    info_y = row_y + 20
+    info_y = row_y + 18
     cond_text = _fit_text(draw, cond_text, fonts["info"], split_x - info_x - 12)
     draw.text((info_x, info_y), cond_text, fill=0, font=fonts["info"])
     label_w = 24
@@ -321,14 +321,14 @@ def _draw_outdoor_block(
 
     if primary_alert:
         alert_text = _primary_alert_text(primary_alert)
-        tx, ty = left_x + 6, row_y + 80
+        tx, ty = left_x + 6, row_y + 88
         alert_icon_ok = icon_assets.draw(img, "weather", "alert", tx, ty, 16) if icon_assets else False
         if not alert_icon_ok:
             draw.polygon([(tx - 6, ty + 5), (tx, ty - 5), (tx + 6, ty + 5)], outline=0, fill=0)
             draw.text((tx - 1, ty - 4), "!", fill=255, font=fonts["tiny"])
         alert_font = fonts["info"]
         alert_text = _fit_text(draw, alert_text.upper(), alert_font, split_x - left_x - 18)
-        draw.text((left_x + 16, ty - 8), alert_text, fill=0, font=alert_font)
+        draw.text((left_x + 18, ty - 7), alert_text, fill=0, font=alert_font)
 
     sep_x = split_x - 8
     sep_y0 = row_y + 8

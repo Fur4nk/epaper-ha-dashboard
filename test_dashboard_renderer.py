@@ -3,8 +3,8 @@ from datetime import datetime
 
 from PIL import Image, ImageDraw, ImageFont
 
-from dashboard_renderer import _fit_text, _format_temp_range, _primary_alert_text
-from ha_epaper_dashboard import IconAssets, W, H, build_settings, demo_data, render
+from dashboard_renderer import _draw_outdoor_block, _fit_text, _format_temp_range, _primary_alert_text
+from ha_epaper_dashboard import IconAssets, W, H, build_settings, demo_data, load_fonts, render
 
 
 class PrimaryAlertTextTests(unittest.TestCase):
@@ -47,6 +47,70 @@ class FormatTempRangeTests(unittest.TestCase):
         text = _format_temp_range(None, 25.6)
 
         self.assertEqual(text, "26°/—°")
+
+
+class OutdoorBlockRenderTests(unittest.TestCase):
+    def test_weather_alert_warning_line_is_lowered_in_info_area(self):
+        img = Image.new("1", (W, H), 255)
+        base_draw = ImageDraw.Draw(img)
+        draw = RecordingDraw(base_draw)
+        icon_assets = RecordingIconAssets()
+
+        _draw_outdoor_block(
+            draw,
+            img,
+            {
+                "condition": "sunny",
+                "temperature": 21,
+                "humidity": 52,
+                "wind_speed": 8,
+                "uv_index": 2,
+                "alert": {"event": "Temporali forti", "severity": "yellow"},
+                "dayparts": {},
+            },
+            y=56,
+            width=W,
+            fonts=load_fonts(),
+            icon_assets=icon_assets,
+            icons_cls=None,
+            condition_labels={},
+            intraday_labels=[],
+            labels={},
+        )
+
+        self.assertIn(("weather", "alert", 22, 156, 16), icon_assets.draw_calls)
+        self.assertIn(((34, 149), "TEMPORALI FORTI"), draw.text_calls)
+
+
+class RecordingDraw:
+    def __init__(self, draw):
+        self.draw = draw
+        self.text_calls = []
+
+    def text(self, xy, text, *args, **kwargs):
+        self.text_calls.append((xy, text))
+        return self.draw.text(xy, text, *args, **kwargs)
+
+    def textlength(self, text, *args, **kwargs):
+        return self.draw.textlength(text, *args, **kwargs)
+
+    def line(self, *args, **kwargs):
+        return self.draw.line(*args, **kwargs)
+
+    def polygon(self, *args, **kwargs):
+        return self.draw.polygon(*args, **kwargs)
+
+
+class RecordingIconAssets:
+    def __init__(self):
+        self.draw_calls = []
+
+    def draw(self, img, category, name, cx, cy, size):
+        self.draw_calls.append((category, name, cx, cy, size))
+        return True
+
+    def draw_weather(self, img, condition, cx, cy, size):
+        return True
 
 
 class DemoRenderTests(unittest.TestCase):
