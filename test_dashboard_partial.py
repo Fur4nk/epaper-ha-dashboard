@@ -50,7 +50,7 @@ class BuildDynamicPartialRectsTests(unittest.TestCase):
 
         rects = build_dynamic_partial_rects(data, header_h=56, width=480, height=800, changed=changed)
 
-        self.assertIn((12, 74, 190, 174), rects)
+        self.assertIn((0, 74, 198, 174), rects)
 
     def test_forecast_partial_refresh_covers_temperature_line(self):
         data = {
@@ -99,6 +99,78 @@ class BuildDynamicPartialRectsTests(unittest.TestCase):
         rects = build_dynamic_partial_rects(data, header_h=56, width=480, height=800, changed=changed)
 
         self.assertEqual(rects[0][1], 310)
+
+    def test_focus_room_partial_refresh_starts_after_expanded_outdoor_block(self):
+        data = {
+            "weather": {
+                "forecast": [
+                    {"datetime": "2026-04-30", "condition": "sunny", "temperature": 24, "templow": 16},
+                ],
+            },
+            "rooms": [
+                {"name": "Cucina", "temp": 20.1, "hum": 50, "metrics": [{"key": "temp", "value": 20.1, "decimals": 1}]},
+            ],
+        }
+        changed = {
+            "outdoor": False,
+            "intraday": False,
+            "forecast": False,
+            "alert": False,
+            "rooms": {0},
+            "footer": False,
+        }
+
+        rects = build_dynamic_partial_rects(data, header_h=56, width=480, height=800, changed=changed, outdoor_focus=True)
+
+        self.assertEqual(rects[0][1], 410)
+        self.assertLessEqual(rects[0][3] - rects[0][1], 44)
+
+    def test_focus_forecast_change_refreshes_outdoor_current_day_area(self):
+        data = {
+            "weather": {
+                "forecast": [
+                    {"datetime": "2026-04-30", "condition": "sunny", "temperature": 25, "templow": 16},
+                ],
+                "dayparts": {
+                    "morning": {"min": 16, "max": 25, "condition": "sunny"},
+                },
+            },
+            "rooms": [],
+        }
+        changed = {
+            "outdoor": False,
+            "intraday": False,
+            "forecast": True,
+            "alert": False,
+            "rooms": set(),
+            "footer": False,
+        }
+
+        rects = build_dynamic_partial_rects(data, header_h=56, width=480, height=800, changed=changed, outdoor_focus=True)
+
+        self.assertIn((0, 74, 480, 274), rects)
+
+    def test_focus_intraday_change_refreshes_outdoor_current_day_area(self):
+        data = {
+            "weather": {
+                "dayparts": {
+                    "morning": {"min": 16, "max": 25, "condition": "sunny"},
+                },
+            },
+            "rooms": [],
+        }
+        changed = {
+            "outdoor": False,
+            "intraday": True,
+            "forecast": False,
+            "alert": False,
+            "rooms": set(),
+            "footer": False,
+        }
+
+        rects = build_dynamic_partial_rects(data, header_h=56, width=480, height=800, changed=changed, outdoor_focus=True)
+
+        self.assertIn((0, 74, 480, 274), rects)
 
     def test_room_partial_refresh_covers_full_metrics_area(self):
         data = {

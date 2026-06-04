@@ -3,6 +3,7 @@ from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 
 OUTDOOR_ROW_H = 100
+OUTDOOR_FOCUS_ROW_H = 200
 FORECAST_ROW_H = 82
 
 
@@ -54,6 +55,27 @@ def _format_temp_range(t_low, t_high) -> str:
     hi = f"{int(round(float(t_high)))}" if t_high not in (None, "—") else "—"
     lo = f"{int(round(float(t_low)))}" if t_low not in (None, "—") else "—"
     return f"{hi}°/{lo}°"
+
+
+def _today_temp_range(weather: dict):
+    dayparts = weather.get("dayparts", {}) if isinstance(weather, dict) else {}
+    lows = []
+    highs = []
+    if isinstance(dayparts, dict):
+        for key in ("morning", "afternoon", "evening"):
+            entry = dayparts.get(key, {})
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("min") is not None:
+                lows.append(entry.get("min"))
+            if entry.get("max") is not None:
+                highs.append(entry.get("max"))
+    if lows or highs:
+        return min(lows) if lows else None, max(highs) if highs else None
+
+    forecast = weather.get("forecast", []) if isinstance(weather, dict) else []
+    first = forecast[0] if forecast and isinstance(forecast[0], dict) else {}
+    return first.get("templow"), first.get("temperature")
 
 
 def _parse_local_datetime(dt_str: str):
@@ -271,6 +293,7 @@ def _draw_outdoor_block(
     condition_labels: dict,
     intraday_labels: list,
     labels: dict,
+    outdoor_focus: bool = False,
 ):
     cond = weather.get("condition", "unknown")
     out_temp = weather.get("temperature")
@@ -284,10 +307,71 @@ def _draw_outdoor_block(
     draw.text((16, y), labels.get("outdoor", "OUTDOOR"), fill=0, font=fonts["section"])
     y += 12
     row_y = y
-    row_h = OUTDOOR_ROW_H
+    row_h = OUTDOOR_FOCUS_ROW_H if outdoor_focus else OUTDOOR_ROW_H
     cond_text = condition_labels.get(cond, cond.replace("_", " ").title())
     left_x = 16
     split_x = 198
+
+    if outdoor_focus:
+        col1_left = 16
+        col1_right = 242
+        col1_center = (col1_left + col1_right) // 2
+        col2_left = 250
+        col2_right = width - 16
+        col2_center = (col2_left + col2_right) // 2
+
+        if out_temp is not None:
+            temp_num = f"{int(round(float(out_temp)))}"
+            num_w = int(draw.textlength(temp_num, font=fonts["temp_outdoor_focus"]))
+            deg_w = int(draw.textlength("°", font=fonts["temp_outdoor_focus"]))
+            temp_x = col1_center - ((num_w + deg_w - 4) // 2)
+            temp_y = row_y + 30
+            draw.text((temp_x, temp_y), temp_num, fill=0, font=fonts["temp_outdoor_focus"])
+            draw.text((temp_x + num_w - 4, temp_y), "°", fill=0, font=fonts["temp_outdoor_focus"])
+        else:
+            draw.text((col1_center, row_y + 78), "—°", fill=0, font=fonts["temp_outdoor_focus"], anchor="mm")
+
+        icon_ok = icon_assets.draw_weather(img, cond, col2_center, row_y + 36, 65) if icon_assets else False
+        if not icon_ok and icons_cls:
+            icons_cls.weather(draw, col2_center, row_y + 36, cond, r=32)
+        cond_text = _fit_text(draw, cond_text, fonts["weather_sub"], col2_right - col2_left - 12)
+        draw.text((col2_center, row_y + 88), cond_text, fill=0, font=fonts["weather_sub"], anchor="mm")
+        t_low, t_high = _today_temp_range(weather)
+        draw.text((col2_center, row_y + 114), _format_temp_range(t_low, t_high), fill=0, font=fonts["temp_big"], anchor="mm")
+        draw.text(
+            (col2_center, row_y + 138),
+            f"{labels.get('humidity_short', 'Hu')} {out_hum:.0f}%" if out_hum is not None else f"{labels.get('humidity_short', 'Hu')} --%",
+            fill=0,
+            font=fonts["weather_sub"],
+            anchor="mm",
+        )
+        draw.text(
+            (col2_center, row_y + 156),
+            f"{labels.get('wind_short', 'Wi')} {wind:.0f} km/h" if wind is not None else f"{labels.get('wind_short', 'Wi')} -- km/h",
+            fill=0,
+            font=fonts["weather_sub"],
+            anchor="mm",
+        )
+        if primary_alert:
+            alert_y = row_y + 154
+            alert_text = _fit_text(draw, _primary_alert_text(primary_alert).upper(), fonts["info"], col1_right - col1_left - 32)
+            alert_text_w = int(draw.textlength(alert_text, font=fonts["info"]))
+            alert_gap = 6
+            alert_icon_size = 16
+            alert_group_w = alert_icon_size + alert_gap + alert_text_w
+            alert_shift_left = 8
+            alert_icon_x = col1_center - (alert_group_w // 2) + (alert_icon_size // 2) - alert_shift_left
+            alert_text_x = alert_icon_x + (alert_icon_size // 2) + alert_gap
+            alert_icon_ok = icon_assets.draw(img, "weather", "alert", alert_icon_x, alert_y, 16) if icon_assets else False
+            if not alert_icon_ok:
+                draw.polygon(
+                    [(alert_icon_x - 6, alert_y + 5), (alert_icon_x, alert_y - 5), (alert_icon_x + 6, alert_y + 5)],
+                    outline=0,
+                    fill=0,
+                )
+                draw.text((alert_icon_x - 1, alert_y - 4), "!", fill=255, font=fonts["tiny"])
+            draw.text((alert_text_x, alert_y), alert_text, fill=0, font=fonts["info"], anchor="lm")
+        return y + row_h
 
     if out_temp is not None:
         temp_num = f"{int(round(float(out_temp)))}"
@@ -422,6 +506,7 @@ def _draw_rooms_block(
     room_temp_min: float,
     room_temp_max: float,
     room_humidity_max: float,
+    rooms_compact: bool = False,
 ):
     def _room_metrics(room: dict):
         metrics = room.get("metrics", []) if isinstance(room.get("metrics"), list) else []
@@ -474,8 +559,10 @@ def _draw_rooms_block(
         draw.text((16, y + 12), labels.get("no_rooms", "No rooms configured"), fill=0, font=fonts["tiny"])
         return y + 28
 
-    available = height - y - 30
+    available = height - y - (92 if rooms_compact else 30)
     row_h = max(1, min(available // len(rooms), 54))
+    if rooms_compact:
+        row_h = max(34, min(row_h, 44))
 
     for i, room in enumerate(rooms):
         ry = y + i * row_h
@@ -485,13 +572,18 @@ def _draw_rooms_block(
         if i % 2 == 0:
             draw.rectangle([(0, ry), (width, ry + row_h - 1)], fill=248)
 
-        room_icon_ok = icon_assets.draw_room(img, room["icon"], 30, ry_mid, 24) if icon_assets else False
+        icon_size = 18 if rooms_compact else 24
+        room_icon_ok = icon_assets.draw_room(img, room["icon"], 30, ry_mid, icon_size) if icon_assets else False
         if not room_icon_ok:
-            icons_cls.room(draw, 30, ry_mid, room["icon"], s=11)
-        draw.text((54, ry_mid), room["name"], fill=0, font=fonts["room_name"], anchor="lm")
+            icons_cls.room(draw, 30, ry_mid, room["icon"], s=9 if rooms_compact else 11)
+        name_font = fonts["section"] if rooms_compact else fonts["room_name"]
+        draw.text((54, ry_mid), room["name"], fill=0, font=name_font, anchor="lm")
 
         for idx, metric in enumerate(metrics):
-            metric_font = fonts["temp_room"] if idx == 0 else fonts["hum_room"]
+            if rooms_compact:
+                metric_font = fonts["hum_room"]
+            else:
+                metric_font = fonts["temp_room"] if idx == 0 else fonts["hum_room"]
             draw.text((col_centers[idx], ry_mid), metric["value_text"], fill=0, font=metric_font, anchor="mm")
 
         sx = width - 14
@@ -538,6 +630,7 @@ def render_dashboard(
     room_temp_min: float = 18.0,
     room_temp_max: float = 24.0,
     room_humidity_max: float = 65.0,
+    outdoor_focus: bool = False,
 ) -> Image.Image:
     img = Image.new("1", (width, height), 255)
     draw = ImageDraw.Draw(img)
@@ -575,6 +668,7 @@ def render_dashboard(
                 condition_labels=condition_labels,
                 intraday_labels=intraday_labels,
                 labels=labels,
+                outdoor_focus=outdoor_focus,
             )
         elif block == "forecast":
             y = _draw_forecast_block(
@@ -605,6 +699,7 @@ def render_dashboard(
                 room_temp_min=room_temp_min,
                 room_temp_max=room_temp_max,
                 room_humidity_max=room_humidity_max,
+                rooms_compact=outdoor_focus,
             )
 
     if "footer" in blocks:

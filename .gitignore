@@ -1,6 +1,11 @@
 secrets.json
 __pycache__/
 *.pyc
+.codex
+.serena/
+.superpowers/
+preview.png
+test_alert.png
 assets/icons/rooms/
 assets/icons/weather/
 assets/icons/source/

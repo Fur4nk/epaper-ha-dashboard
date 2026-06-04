@@ -1,0 +1,63 @@
+{
+    "weather_entity": "weather.forecast_home",
+    "outdoor_temp": "sensor.daikin_soggiorno_outside_temperature",
+    "outdoor_hum": "",
+    "outdoor_uv": "",
+    "outdoor_aqi": "",
+    "outdoor_pm25": "",
+    "sun_entity": "sun.sun",
+
+    "locale": "it",
+    "header_title": "CASA",
+
+    "footer_daily_quote": true,
+    "footer_quote": "",
+    "footer_source": "",
+    "quote_api_url": "https://zenquotes.io/api/today",
+    "quote_cache_file": "/tmp/epaper_daily_quote.json",
+    "dayparts_cache_file": "/tmp/epaper_dayparts_cache.json",
+
+    "header_weekday_format": "full",
+    "header_month_format": "full",
+    "forecast_weekday_format": "full",
+
+    "show_clock": false,
+    "clock_partial_refresh": false,
+    "clock_partial_fullscreen": false,
+    "clock_daemon_interval_sec": 60,
+    "clock_daemon_data_every_min": 5,
+    "clock_daemon_full_every_ticks": 24,
+
+    "footer_debug_ticks": true,
+    "epd_gray_fix": false,
+    "epd_sleep_after_refresh": true,
+    "outdoor_focus_enabled": true,
+    "outdoor_focus_start": "07:00",
+    "outdoor_focus_end": "08:30",
+
+    "weather_alert_entity": "binary_sensor.meteoalarm",
+
+    "rooms": [
+        {"name": "Cucina",     "icon": "kitchen",    "temp": "sensor.temp_umi_cucina_temperature",
+"hum": "sensor.temp_umi_cucina_humidity"},
+        {
+            "name": "Soggiorno",
+            "icon": "livingroom",
+            "metrics": [
+              {"key": "temp", "entity": "sensor.temp_umi_soggiorno_temperature", "decimals": 1, "unit": "°"},
+              {"key": "hum", "entity": "sensor.temp_umi_soggiorno_humidity", "decimals": 0, "unit": "%"},
+              {"key": "co2", "label": "CO2", "entity": "sensor.soggiorno_co2", "decimals": 0, "unit": "ppm"}
+            ]
+        },
+        {"name": "Camera",     "icon": "bedroom",    "temp": "sensor.temp_umi_camera_temperature",
+"hum": "sensor.temp_umi_camera_humidity"},
+        {"name": "Cameretta",  "icon": "childroom",  "temp": "sensor.temp_umi_cameretta_temperature",
+"hum": "sensor.temp_umi_cameretta_humidity"},
+        {"name": "Bagno",      "icon": "bathroom",   "temp": "sensor.temp_umi_bagno_temperature",
+"hum": "sensor.temp_umi_bagno_humidity"},
+        {"name": "Lavanderia", "icon": "laundry",    "temp": "sensor.temp_umi_lavanderia_temperature",
+"hum": "sensor.temp_umi_lavanderia_humidity"},
+        {"name": "Sgabuzzino", "icon": "storage",    "temp":
+"sensor.temp_umi_ripostiglio_temperature", "hum": "sensor.temp_umi_ripostiglio_humidity"}
+    ]
+}

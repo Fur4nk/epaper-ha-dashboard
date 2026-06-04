@@ -94,11 +94,25 @@ def partial_refresh_rects(epd, disp_fn, buffer, rects):
     return True
 
 
+def apply_gray_fix(epd):
+    send_command = getattr(epd, "send_command", None)
+    send_data = getattr(epd, "send_data", None)
+    if not callable(send_command) or not callable(send_data):
+        return False
+    send_command(0x50)
+    send_data(0x10)
+    send_data(0x17)
+    send_command(0x52)
+    send_data(0x03)
+    return True
+
+
 def send_to_epaper(
     img,
     epd_lib_path: str,
     mode: str,
     clock_partial_refresh: bool,
+    gray_fix: bool,
     script_dir: str,
     log,
 ):
@@ -113,21 +127,31 @@ def send_to_epaper(
         disp_fn, disp_name = first_callable(epd, ["displayPartial", "display_partial", "display_Partial"])
         if init_fn and disp_fn:
             init_fn()
+            if gray_fix:
+                apply_gray_fix(epd)
             log.info(f"Clock refresh using partial mode ({init_name} + {disp_name})")
             if not safe_partial_refresh(epd, disp_fn, buffer, rect=None):
                 log.warning("Partial signature mismatch, using full refresh for clock mode")
                 epd.init()
+                if gray_fix:
+                    apply_gray_fix(epd)
                 epd.display(buffer)
         else:
             log.warning("Partial refresh not supported by this driver, using full refresh for clock mode")
             epd.init()
+            if gray_fix:
+                apply_gray_fix(epd)
             epd.display(buffer)
     elif mode == "clock":
         log.info("Clock mode using full refresh (clock_partial_refresh disabled)")
         epd.init()
+        if gray_fix:
+            apply_gray_fix(epd)
         epd.display(buffer)
     else:
         epd.init()
+        if gray_fix:
+            apply_gray_fix(epd)
         log.info("Refreshing display...")
         epd.display(buffer)
     log.info("Sleep mode")

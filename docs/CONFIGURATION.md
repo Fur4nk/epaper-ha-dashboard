@@ -115,6 +115,15 @@ Examples:
 - `clock_daemon_data_every_min` (data refresh interval, default `10`)
 - `clock_daemon_full_every_ticks` (force full refresh every N display ticks, not minutes)
 - `clock_daemon_full_every` (deprecated alias of `clock_daemon_full_every_ticks`)
+- `epd_gray_fix` (`true` applies the Waveshare 7.5" V2 alternate display setting used when the panel appears gray/faded)
+- `epd_sleep_after_refresh` (`true` puts the panel to sleep after each full refresh in daemon mode; recommended when partial refresh is disabled)
+
+### Outdoor focus mode
+
+- `outdoor_focus_enabled` (`true` to enlarge outdoor temperature during a time window)
+- `outdoor_focus_start` (default `07:00`)
+- `outdoor_focus_end` (default `08:30`)
+- During focus mode, the current outdoor temperature is enlarged, today's min/max and weather summary remain visible, and room rows are compressed to keep the footer quote visible.
 
 ## Notes on HA forecast
 

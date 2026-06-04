@@ -25,6 +25,7 @@ from datetime import datetime, timedelta
 from PIL import Image, ImageDraw, ImageFont
 from dashboard_ha import fetch_all_data as fetch_all_data_from_ha
 from dashboard_epd import (
+    apply_gray_fix,
     first_callable,
     load_epd_driver,
     safe_partial_refresh,
@@ -66,6 +67,42 @@ def _to_int(value, default: int) -> int:
         return default
 
 
+def _time_hhmm(value, default: str) -> str:
+    text = str(value if value is not None else default).strip()
+    try:
+        hour_text, minute_text = text.split(":", 1)
+        hour = int(hour_text)
+        minute = int(minute_text)
+    except Exception:
+        return default
+    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+        return default
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _hhmm_minutes(value: str) -> int:
+    hour_text, minute_text = value.split(":", 1)
+    return int(hour_text) * 60 + int(minute_text)
+
+
+def _outdoor_focus_active(settings, now: datetime) -> bool:
+    if not bool(getattr(settings, "outdoor_focus_enabled", False)):
+        return False
+    current = now.hour * 60 + now.minute
+    start = _hhmm_minutes(settings.outdoor_focus_start)
+    end = _hhmm_minutes(settings.outdoor_focus_end)
+    if start <= end:
+        return start <= current < end
+    return current >= start or current < end
+
+
+def _sleep_epd_after_refresh(epd, log):
+    try:
+        epd.sleep()
+    except Exception as e:
+        log.warning(f"Failed to put e-Paper to sleep after refresh: {e}")
+
+
 I18N_DIR = os.path.join(SCRIPT_DIR, "i18n")
 
 W, H = 480, 800
@@ -100,12 +137,17 @@ class DashboardSettings:
     locale: str = "en"
     header_title: str = "HOUSE"
     clock_partial_refresh: bool = True
-    clock_partial_fullscreen: bool = True
+    clock_partial_fullscreen: bool = False
     clock_daemon_interval_sec: int = 60
     clock_daemon_full_every: int = 240
     clock_daemon_data_every_min: int = 10
     show_clock: bool = True
     footer_debug_ticks: bool = False
+    epd_gray_fix: bool = False
+    epd_sleep_after_refresh: bool = True
+    outdoor_focus_enabled: bool = True
+    outdoor_focus_start: str = "07:00"
+    outdoor_focus_end: str = "08:30"
     room_temp_min: float = 18.0
     room_temp_max: float = 24.0
     room_humidity_max: float = 65.0
@@ -199,6 +241,7 @@ def load_fonts() -> dict:
             "section":     ImageFont.truetype(bold, 15),
             "room_name":   ImageFont.truetype(bold, 21),
             "temp_outdoor": ImageFont.truetype(mono, 42),
+            "temp_outdoor_focus": ImageFont.truetype(mono, 118),
             "temp_big":    ImageFont.truetype(mono, 34),
             "temp_room":   ImageFont.truetype(mono, 26),
             "hum_room":    ImageFont.truetype(mono, 18),
@@ -212,7 +255,7 @@ def load_fonts() -> dict:
     except OSError:
         log.warning("DejaVu fonts not found, using default")
         d = ImageFont.load_default()
-        return {k: d for k in ["title","time","date","date_large","section","room_name","temp_outdoor","temp_big",
+        return {k: d for k in ["title","time","date","date_large","section","room_name","temp_outdoor","temp_outdoor_focus","temp_big",
             "temp_room","hum_room","weather_sub","fc_day","fc_temp","tiny","info","col_hdr"]}
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
@@ -676,6 +719,8 @@ def build_settings(config: dict, secrets: dict, require_secrets: bool) -> Dashbo
     room_temp_min = _to_float_default(config.get("room_temp_min", 18.0), 18.0)
     room_temp_max = _to_float_default(config.get("room_temp_max", 24.0), 24.0)
     room_humidity_max = _to_float_default(config.get("room_humidity_max", 65.0), 65.0)
+    outdoor_focus_start = _time_hhmm(config.get("outdoor_focus_start", "07:00"), "07:00")
+    outdoor_focus_end = _time_hhmm(config.get("outdoor_focus_end", "08:30"), "08:30")
 
     if header_weekday_format not in ("full", "abbr"):
         log.warning("Invalid header_weekday_format in config.json, using 'full'")
@@ -738,12 +783,17 @@ def build_settings(config: dict, secrets: dict, require_secrets: bool) -> Dashbo
         locale=locale,
         header_title=str(config.get("header_title", "HOUSE")).strip() or "HOUSE",
         clock_partial_refresh=bool(config.get("clock_partial_refresh", True)),
-        clock_partial_fullscreen=bool(config.get("clock_partial_fullscreen", True)),
+        clock_partial_fullscreen=bool(config.get("clock_partial_fullscreen", False)),
         clock_daemon_interval_sec=clock_daemon_interval_sec,
         clock_daemon_full_every=clock_daemon_full_every,
         clock_daemon_data_every_min=clock_daemon_data_every_min,
         show_clock=bool(config.get("show_clock", True)),
         footer_debug_ticks=bool(config.get("footer_debug_ticks", False)),
+        epd_gray_fix=bool(config.get("epd_gray_fix", False)),
+        epd_sleep_after_refresh=bool(config.get("epd_sleep_after_refresh", True)),
+        outdoor_focus_enabled=bool(config.get("outdoor_focus_enabled", True)),
+        outdoor_focus_start=outdoor_focus_start,
+        outdoor_focus_end=outdoor_focus_end,
         room_temp_min=room_temp_min,
         room_temp_max=room_temp_max,
         room_humidity_max=room_humidity_max,
@@ -863,6 +913,7 @@ def render(
 ) -> Image.Image:
     now = now or datetime.now()
     fonts = load_fonts()
+    outdoor_focus = _outdoor_focus_active(settings, now)
     return render_dashboard(
         data,
         now,
@@ -891,6 +942,7 @@ def render(
         room_temp_min=settings.room_temp_min,
         room_temp_max=settings.room_temp_max,
         room_humidity_max=settings.room_humidity_max,
+        outdoor_focus=outdoor_focus,
     )
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
@@ -903,12 +955,14 @@ def send_to_epaper(
     epd_lib_path: str = "",
     mode: str = "full",
     clock_partial_refresh: bool = False,
+    gray_fix: bool = False,
 ):
     epd_send_to_epaper(
         img,
         epd_lib_path=epd_lib_path,
         mode=mode,
         clock_partial_refresh=clock_partial_refresh,
+        gray_fix=gray_fix,
         script_dir=SCRIPT_DIR,
         log=log,
     )
@@ -947,10 +1001,12 @@ def run_clock_daemon(
     ticks_since_full = 0
     last_data_snapshot = None
     last_date = datetime.now().date()
+    last_outdoor_focus = _outdoor_focus_active(settings, datetime.now())
     img = load_cached_full_image(cache_image, settings)
     try:
         initial_data = demo_data() if demo else fetch_all_data(settings)
         init_now = datetime.now()
+        last_outdoor_focus = _outdoor_focus_active(settings, init_now)
         startup_debug_text = "0" if settings.footer_debug_ticks else ""
         img = render(initial_data, settings, icon_assets, now=init_now, last_updated=init_now, footer_debug_text=startup_debug_text)
         last_data_snapshot = build_data_snapshot(
@@ -982,7 +1038,11 @@ def run_clock_daemon(
         log.warning(f"Failed to update cache image {cache_image}: {e}")
     startup_buffer = epd.getbuffer(img.rotate(90, expand=True))
     epd.init()
+    if settings.epd_gray_fix:
+        apply_gray_fix(epd)
     epd.display(startup_buffer)
+    if settings.epd_sleep_after_refresh:
+        _sleep_epd_after_refresh(epd, log)
     last_frame_img = img.copy()
     display_tick_count = 1
     tick_count = 1
@@ -991,8 +1051,12 @@ def run_clock_daemon(
         while True:
             now = datetime.now()
             try:
+                outdoor_focus = _outdoor_focus_active(settings, now)
+                focus_changed = outdoor_focus != last_outdoor_focus
                 day_changed = now.date() != last_date
-                do_data = tick_count == 0 or (tick_count % data_every_ticks == 0) or day_changed
+                do_data = tick_count == 0 or (tick_count % data_every_ticks == 0) or day_changed or focus_changed
+                if focus_changed:
+                    log.info("Outdoor focus layout changed, forcing data refresh")
                 if day_changed:
                     log.info("Day changed, forcing data refresh")
                     last_date = now.date()
@@ -1005,7 +1069,7 @@ def run_clock_daemon(
                     time.sleep(sleep_s)
                     continue
 
-                do_full = display_tick_count == 0 or (display_tick_count % full_every == 0) or day_changed
+                do_full = display_tick_count == 0 or (display_tick_count % full_every == 0) or day_changed or focus_changed
                 debug_tick_value = 0 if do_full else (ticks_since_full + 1)
                 debug_text = str(debug_tick_value) if settings.footer_debug_ticks else ""
 
@@ -1027,7 +1091,7 @@ def run_clock_daemon(
                         or changed.get("alert")
                         or changed.get("rooms")
                     )
-                    data_rects = build_dynamic_partial_rects(data, HEADER_H, W, H, changed=changed)
+                    data_rects = build_dynamic_partial_rects(data, HEADER_H, W, H, changed=changed, outdoor_focus=outdoor_focus)
                     if do_full or last_frame_img is None:
                         img = new_img
                     else:
@@ -1053,9 +1117,15 @@ def run_clock_daemon(
 
                 if do_full:
                     epd.init()
+                    if settings.epd_gray_fix:
+                        apply_gray_fix(epd)
                     epd.display(buffer)
+                    if settings.epd_sleep_after_refresh:
+                        _sleep_epd_after_refresh(epd, log)
                 elif partial_enabled:
                     init_partial_fn()
+                    if settings.epd_gray_fix:
+                        apply_gray_fix(epd)
                     if do_data:
                         if partial_fullscreen:
                             partial_ok = safe_partial_refresh(epd, disp_partial_fn, buffer, rect=None)
@@ -1063,26 +1133,43 @@ def run_clock_daemon(
                                 log.warning("Data partial refresh failed, switching to full refresh")
                                 partial_enabled = False
                                 epd.init()
+                                if settings.epd_gray_fix:
+                                    apply_gray_fix(epd)
                                 epd.display(buffer)
+                                if settings.epd_sleep_after_refresh:
+                                    _sleep_epd_after_refresh(epd, log)
                         else:
                             # Conservative mode: avoid data partial updates when fullscreen partial is disabled.
                             # On some panel/driver combinations rect partials are unstable and corrupt the frame.
                             # To reduce full refresh frequency, skip refresh when non-clock data did not change.
                             if has_data_change:
                                 epd.init()
+                                if settings.epd_gray_fix:
+                                    apply_gray_fix(epd)
                                 epd.display(buffer)
+                                if settings.epd_sleep_after_refresh:
+                                    _sleep_epd_after_refresh(epd, log)
                             else:
                                 log.info("No data change detected, skipping data-tick display refresh")
                     elif not safe_partial_refresh(epd, disp_partial_fn, buffer, rect=clock_header_rect_epd):
                         log.warning("Clock daemon partial failed, switching to full refresh")
                         partial_enabled = False
                         epd.init()
+                        if settings.epd_gray_fix:
+                            apply_gray_fix(epd)
                         epd.display(buffer)
+                        if settings.epd_sleep_after_refresh:
+                            _sleep_epd_after_refresh(epd, log)
                 else:
                     epd.init()
+                    if settings.epd_gray_fix:
+                        apply_gray_fix(epd)
                     epd.display(buffer)
+                    if settings.epd_sleep_after_refresh:
+                        _sleep_epd_after_refresh(epd, log)
 
                 last_frame_img = img.copy()
+                last_outdoor_focus = outdoor_focus
                 ticks_since_full = 0 if do_full else debug_tick_value
                 display_tick_count += 1
                 tick_count += 1
@@ -1211,6 +1298,7 @@ def main():
             args.epd_lib_path,
             mode=args.mode,
             clock_partial_refresh=clock_partial_refresh,
+            gray_fix=bool(settings.epd_gray_fix),
         )
         log.info("Done!")
 

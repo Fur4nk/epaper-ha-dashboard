@@ -1,4 +1,4 @@
-from dashboard_renderer import FORECAST_ROW_H, OUTDOOR_ROW_H
+from dashboard_renderer import FORECAST_ROW_H, OUTDOOR_FOCUS_ROW_H, OUTDOOR_ROW_H
 
 
 def _rounded_or_none(value, to_float, digits):
@@ -146,17 +146,26 @@ def diff_snapshots(prev_snap, curr_snap):
     }
 
 
-def build_dynamic_partial_rects(data: dict, header_h: int, width: int, height: int, changed: dict = None):
+def build_dynamic_partial_rects(data: dict, header_h: int, width: int, height: int, changed: dict = None, outdoor_focus: bool = False):
     rects = []
     y = header_h
     y += 6
     y += 12
     row_y = y
-    row_h = OUTDOOR_ROW_H
+    row_h = OUTDOOR_FOCUS_ROW_H if outdoor_focus else OUTDOOR_ROW_H
 
-    if changed is None or changed.get("outdoor") or changed.get("alert"):
-        rects.append((12, row_y, 190, row_y + row_h))
-    if changed is None or changed.get("intraday"):
+    outdoor_changed = (
+        changed is None
+        or changed.get("outdoor")
+        or changed.get("alert")
+        or (outdoor_focus and (changed.get("intraday") or changed.get("forecast")))
+    )
+    if outdoor_changed:
+        if outdoor_focus:
+            rects.append((0, row_y, width, row_y + row_h))
+        else:
+            rects.append((0, row_y, 198, row_y + row_h))
+    if (not outdoor_focus) and (changed is None or changed.get("intraday")):
         rects.append((190, row_y + 18, width, row_y + row_h))
     y += row_h
 
@@ -177,8 +186,10 @@ def build_dynamic_partial_rects(data: dict, header_h: int, width: int, height: i
     rooms_y = y
     rooms = data.get("rooms", []) if isinstance(data, dict) else []
     if rooms:
-        available = height - rooms_y - 30
+        available = height - rooms_y - (92 if outdoor_focus else 30)
         row_h = min(available // len(rooms), 54)
+        if outdoor_focus:
+            row_h = max(34, min(row_h, 44))
         room_changes = None if changed is None else changed.get("rooms")
         if room_changes is None:
             rooms_bottom = rooms_y + len(rooms) * row_h
